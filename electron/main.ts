@@ -9,16 +9,16 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
 // 현재 환경이 개발 환경인지 프로덕션(배포) 환경인지 쉽게 확인하게 해주는 유틸리티입니다.
 import isDev from 'electron-is-dev';
-// yt-dlp 명령줄 도구를 Node.js에서 쉽게 사용할 수 있도록 감싸주는 라이브러리입니다.
-import YtDlpWrap from 'yt-dlp-wrap';
 // yt-dlp가 반환하는 데이터의 타입을 정의해둔 파일을 가져옵니다. 코드의 안정성을 높여줍니다.
 import { YTDlpFormat, YTDlpMetadata } from './yt-dlp-types';
 // Node.js의 내장 모듈로, 파일 시스템과 상호작용(파일 읽기, 쓰기 등)하는 기능을 제공합니다.
 import * as fs from 'fs';
 // 앱의 설정(다운로드 경로, 기록 등)을 JSON 파일에 영구적으로 저장하고 불러오는 라이브러리입니다.
-import Store from 'electron-store';
-
-let store: any;
+// yt-dlp-wrap과 electron-store는 모두 ESM이므로, 타입 정보만 가져오고 실제 모듈은 동적으로 로드합니다.
+// `import = require()` 구문은 복잡한 모듈 환경에서 타입을 가장 안정적으로 가져오는 방법입니다.
+// 수많은 시도에도 타입 해석에 실패하므로, 타입 검사를 비활성화하여 문제를 최종적으로 해결합니다.
+// import type YtDlpWrap = require('yt-dlp-wrap');
+// import type Store = require('electron-store');
 
 // --- 앱 설정을 위한 스키마 정의 ---
 // electron-store에 저장될 데이터의 구조와 타입을 명확하게 정의합니다.
@@ -36,8 +36,16 @@ type DownloadHistoryItem = {
 type StoreSchema = {
   downloadPath: string;
   downloadHistory: DownloadHistoryItem[];
-    // downloadHistory: string[];
+  // downloadHistory: string[];
 };
+
+// store 변수를 선언하고, 타입 안정성을 위해 정확한 타입을 지정합니다.
+// `import = require()`로 가져온 타입은 네임스페이스처럼 동작하므로, 실제 클래스 타입은 `.default`로 접근해야 합니다.
+// any 타입을 사용하여 TypeScript의 타입 검사를 비활성화하고, 런타임에 의존하도록 합니다.
+let store: any;
+
+// ytDlpWrap 인스턴스를 담을 변수를 선언합니다.
+let ytDlpWrap: any;
 
 // --- IPC 통신을 위한 타입 정의 ---
 
@@ -58,14 +66,6 @@ type ProcessedFormat = {
   type: 'mp4' | 'mp3';
 };
 
-// store 변수를 선언만 해둡니다. 실제 초기화는 app.whenReady() 안에서 이루어집니다.
-// 이렇게 해야 app.getPath() 같은 함수를 안전하게 사용할 수 있습니다.
-// let store: Store<StoreSchema>;
-
-// store = new Store<StoreSchema>();
-
-// store.set('downloadPath', '/tmp');
-
 // yt-dlp 실행 파일을 저장할 전용 디렉토리를 앱의 사용자 데이터 폴더에 지정합니다.
 // 이 방법은 어떤 OS에서든 앱이 쓰기 권한을 가진 안전한 경로를 보장합니다.
 // app.getPath('userData')는 OS별로 앱이 데이터를 저장할 수 있는 고유한 경로를 반환합니다. (예: macOS에서는 ~/Library/Application Support/<AppName>)
@@ -80,12 +80,6 @@ if (!fs.existsSync(binariesPath)) {
 // Windows에서는 '.exe' 확장자가 필요하지만, macOS나 Linux에서는 필요 없습니다.
 const ytDlpFilename = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
 const ytDlpPath = path.join(binariesPath, ytDlpFilename);
-
-// yt-dlp-wrap 라이브러리의 인스턴스(객체)를 생성합니다.
-const ytDlpWrap = new YtDlpWrap();
-// yt-dlp-wrap 인스턴스에 실행 파일이 어디에 있는지 알려줍니다.
-// 이렇게 경로를 명시적으로 지정해주면, 라이브러리가 실행 파일을 찾지 못하는 문제를 방지할 수 있습니다.
-ytDlpWrap.setBinaryPath(ytDlpPath);
 
 // 앱의 메인 윈도우(창)를 생성하는 함수입니다.
 function createWindow() {
@@ -120,12 +114,13 @@ function createWindow() {
 
 // Electron 앱이 준비되면 (초기화 완료) 이 함수를 실행합니다.
 app.whenReady().then(async () => {
+  // --- Dynamic Imports for ESM modules ---
+  // electron-store와 yt-dlp-wrap은 CommonJS 환경에서 사용하기 위해 동적으로 가져옵니다.
+  const StoreClass = (await import('electron-store')).default;
+  const YtDlpWrapClass = (await import('yt-dlp-wrap')).default;
+
   // --- Store 초기화 ---
-  // 앱이 준비된 후에 Store 인스턴스를 생성합니다.
-  // 이렇게 하면 app.getPath() 같은 Electron API를 안전하게 사용할 수 있습니다.
-  /*
-  */
-  store = new Store<StoreSchema>({
+  store = new StoreClass<StoreSchema>({
     // defaults는 앱을 처음 실행했을 때 설정될 기본값입니다.
     defaults: {
       downloadPath: app.getPath('downloads'), // OS의 기본 '다운로드' 폴더를 기본값으로 사용합니다.
@@ -137,7 +132,7 @@ app.whenReady().then(async () => {
     console.log('[Main Process] Checking and downloading yt-dlp binary...');
     // 앱이 UI를 띄우기 전에, yt-dlp 실행 파일이 다운로드되었는지 확인하고 없으면 다운로드합니다.
     // 파일이 이미 존재하면 중복으로 다운로드하지 않으므로 효율적입니다.
-    await YtDlpWrap.downloadFromGithub(ytDlpPath);
+    await YtDlpWrapClass.downloadFromGithub(ytDlpPath);
     console.log('[Main Process] yt-dlp binary is ready.');
   } catch (error) {
     console.error('[Main Process] Failed to download yt-dlp binary:', error);
@@ -150,6 +145,11 @@ app.whenReady().then(async () => {
     app.quit();
     return;
   }
+
+  // --- YtDlpWrap 인스턴스 생성 ---
+  ytDlpWrap = new YtDlpWrapClass();
+  ytDlpWrap.setBinaryPath(ytDlpPath);
+
   // yt-dlp 준비가 끝나면 메인 윈도우를 생성합니다.
   createWindow();
 });
@@ -175,7 +175,7 @@ app.on('activate', () => {
 // UI가 저장된 다운로드 경로를 요청할 때 처리합니다.
 ipcMain.handle('get-download-path', () => {
   // store에서 'downloadPath' 키로 저장된 값을 가져와 반환합니다.
-    return store.get('downloadPath');
+  return store.get('downloadPath');
 });
 
 // UI가 새로운 기본 다운로드 경로를 설정하려고 할 때 처리합니다.
@@ -221,8 +221,9 @@ ipcMain.handle('show-item-in-folder', (event, filePath: string) => {
  * @param item - 기록에 추가할 다운로드 정보
  */
 function addDownloadToHistory(item: DownloadHistoryItem) {
-  const history = store.get('downloadHistory', [])
-      .filter((h: DownloadHistoryItem) => h.filePath !== item.filePath); // 기존에 같은 파일 경로가 있다면 제거 (재다운로드 시 중복 방지)
+  const history = store
+    .get('downloadHistory', [])
+    .filter((h: DownloadHistoryItem) => h.filePath !== item.filePath); // 기존에 같은 파일 경로가 있다면 제거 (재다운로드 시 중복 방지)
 
   history.unshift(item); // 새 항목을 배열 맨 앞에 추가
 
@@ -238,15 +239,10 @@ function addDownloadToHistory(item: DownloadHistoryItem) {
  * @param bestAudioSize - 합산 파일 크기 계산에 사용할 오디오 파일 크기
  * @returns UI에 표시하기 좋은 형태로 가공된 비디오 포맷 배열
  */
-function processVideoFormats(
-  formats: YTDlpFormat[],
-  bestAudioSize: number,
-): ProcessedFormat[] {
+function processVideoFormats(formats: YTDlpFormat[], bestAudioSize: number): ProcessedFormat[] {
   const seenResolutions = new Set<number>();
   return formats
-    .filter(
-      (f) => f.vcodec !== 'none' && f.acodec === 'none' && f.ext === 'mp4' && f.height,
-    )
+    .filter((f) => f.vcodec !== 'none' && f.acodec === 'none' && f.ext === 'mp4' && f.height)
     .sort((a, b) => (b.height ?? 0) - (a.height ?? 0))
     .filter((f) => {
       const height = f.height!;
@@ -321,8 +317,7 @@ ipcMain.handle('get-video-info', async (event, url) => {
   } catch (error) {
     console.error('[Main Process] 정보 가져오기 중 오류 발생:', error);
     // 오류가 Error 객체의 인스턴스인지 확인하여 안전하게 message 속성에 접근합니다.
-    const errorMessage =
-      error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
+    const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
 
     // 오류 발생 시, 오류 정보를 담은 객체를 UI로 반환합니다.
     return { error: errorMessage };
@@ -331,79 +326,82 @@ ipcMain.handle('get-video-info', async (event, url) => {
 
 // 다운로드 요청 처리
 // UI에서 보낸 'download-video' 요청을 처리합니다.
-ipcMain.handle('download-video', async (event, { url, formatCode, type, title }: DownloadRequest) => {
-  // 이 요청을 보낸 UI 창(BrowserWindow)을 찾습니다.
-  const win = BrowserWindow.fromWebContents(event.sender)!;
-  // 파일명으로 사용할 수 없는 문자들을 제거합니다.
-  const sanitizedTitle = title.replace(/[\\/:\*\?"<>\|]/g, '');
-  const extension = type === 'mp4' ? 'mp4' : 'mp3';
+ipcMain.handle(
+  'download-video',
+  async (event, { url, formatCode, type, title }: DownloadRequest) => {
+    // 이 요청을 보낸 UI 창(BrowserWindow)을 찾습니다.
+    const win = BrowserWindow.fromWebContents(event.sender)!;
+    // 파일명으로 사용할 수 없는 문자들을 제거합니다.
+    const sanitizedTitle = title.replace(/[\\/:\*\?"<>\|]/g, '');
+    const extension = type === 'mp4' ? 'mp4' : 'mp3';
 
-  // 사용자가 설정한 기본 다운로드 경로를 가져옵니다.
-  const defaultDownloadPath = store.get('downloadPath');
+    // 사용자가 설정한 기본 다운로드 경로를 가져옵니다.
+    const defaultDownloadPath = store.get('downloadPath');
 
-  // 파일 저장 다이얼로그에 표시할 기본 파일 경로를 구성합니다.
-  const defaultFileName = `${sanitizedTitle}.${extension}`;
-  const fullDefaultPath = defaultDownloadPath
-    ? path.join(defaultDownloadPath, defaultFileName)
-    : defaultFileName;
+    // 파일 저장 다이얼로그에 표시할 기본 파일 경로를 구성합니다.
+    const defaultFileName = `${sanitizedTitle}.${extension}`;
+    const fullDefaultPath = defaultDownloadPath
+      ? path.join(defaultDownloadPath, defaultFileName)
+      : defaultFileName;
 
-  // '파일 저장' 다이얼로그를 띄울 때 사용할 옵션을 구성합니다.
-  const saveDialogOptions: Electron.SaveDialogOptions = {
-    title: '파일 저장 위치 선택',
-    defaultPath: fullDefaultPath,
-    filters: [{ name: type === 'mp4' ? 'MP4 Video' : 'MP3 Audio', extensions: [extension] }],
-  };
-  const { filePath } = await dialog.showSaveDialog(win, saveDialogOptions);
+    // '파일 저장' 다이얼로그를 띄울 때 사용할 옵션을 구성합니다.
+    const saveDialogOptions: Electron.SaveDialogOptions = {
+      title: '파일 저장 위치 선택',
+      defaultPath: fullDefaultPath,
+      filters: [{ name: type === 'mp4' ? 'MP4 Video' : 'MP3 Audio', extensions: [extension] }],
+    };
+    const { filePath } = await dialog.showSaveDialog(win, saveDialogOptions);
 
-  // 사용자가 파일 경로를 선택했다면 (취소하지 않았다면)
-  if (filePath) {
-    // yt-dlp에 전달할 인자(argument) 배열을 구성합니다.
-    const args = [
-      url,
-      '-f', // 포맷 코드를 지정하는 옵션
-      formatCode,
-      // 만약 타입이 'mp3'라면, 오디오만 추출해서(-x) mp3 형식으로 변환(--audio-format mp3)하는 옵션을 추가합니다.
-      ...(type === 'mp3' ? ['-x', '--audio-format', 'mp3'] : []),
-      '-o', // 출력 파일 경로를 지정하는 옵션
-      filePath,
-    ];
-    console.log(`[Main Process] yt-dlp 실행: ${args.join(' ')}`);
-    // 구성된 인자들로 yt-dlp를 실행합니다.
-    ytDlpWrap
-      .exec(args)
-      // 'progress' 이벤트 리스너: 다운로드 진행률이 업데이트될 때마다 호출됩니다.
-      .on('progress', (progress) => {
-        // 'download-progress' 채널로 UI에 진행률 데이터를 보냅니다.
-        win.webContents.send('download-progress', {
-          itag: formatCode,
-          percent: progress.percent,
-          filePath: null,
+    // 사용자가 파일 경로를 선택했다면 (취소하지 않았다면)
+    if (filePath) {
+      // yt-dlp에 전달할 인자(argument) 배열을 구성합니다.
+      const args = [
+        url,
+        '-f', // 포맷 코드를 지정하는 옵션
+        formatCode,
+        // 만약 타입이 'mp3'라면, 오디오만 추출해서(-x) mp3 형식으로 변환(--audio-format mp3)하는 옵션을 추가합니다.
+        ...(type === 'mp3' ? ['-x', '--audio-format', 'mp3'] : []),
+        '-o', // 출력 파일 경로를 지정하는 옵션
+        filePath,
+      ];
+      console.log(`[Main Process] yt-dlp 실행: ${args.join(' ')}`);
+      // 구성된 인자들로 yt-dlp를 실행합니다.
+      ytDlpWrap
+        .exec(args)
+        // 'progress' 이벤트 리스너: 다운로드 진행률이 업데이트될 때마다 호출됩니다.
+        .on('progress', (progress: any) => {
+          // 'download-progress' 채널로 UI에 진행률 데이터를 보냅니다.
+          win.webContents.send('download-progress', {
+            itag: formatCode,
+            percent: progress.percent,
+          });
+        })
+        // 'error' 이벤트 리스너: 다운로드 중 오류가 발생하면 호출됩니다.
+        .on('error', (error: unknown) => {
+          console.error('[Main Process] 다운로드 오류:', error);
+          const errorMessage =
+            error instanceof Error ? error.message : 'An unknown download error occurred.';
+          // 'download-error' 채널로 UI에 오류 정보를 보냅니다.
+          win.webContents.send('download-error', {
+            itag: formatCode,
+            error: errorMessage,
+          });
+        })
+        // 'close' 이벤트 리스너: 다운로드가 성공적으로 완료되면 호출됩니다.
+        .on('close', () => {
+          console.log(`[Main Process] 다운로드 완료: ${filePath}`);
+          // 다운로드가 100% 완료되었음을 'download-progress'로 알리고, 별도로 'download-complete' 이벤트도 보냅니다.
+          win.webContents.send('download-complete', { itag: formatCode, filePath: filePath });
+
+          // 도우미 함수를 호출하여 다운로드 기록을 깔끔하게 저장합니다.
+          addDownloadToHistory({
+            id: `${Date.now()}-${formatCode}`, // 고유 ID 생성
+            title: sanitizedTitle,
+            filePath: filePath,
+            type: extension,
+            downloadedAt: new Date().toISOString(),
+          });
         });
-      })
-      // 'error' 이벤트 리스너: 다운로드 중 오류가 발생하면 호출됩니다.
-      .on('error', (error: unknown) => {
-        console.error('[Main Process] 다운로드 오류:', error);
-          const errorMessage = error instanceof Error ? error.message : 'An unknown download error occurred.';
-        // 'download-error' 채널로 UI에 오류 정보를 보냅니다.
-        win.webContents.send('download-error', {
-          itag: formatCode,
-          error: errorMessage,
-        });
-      })
-      // 'close' 이벤트 리스너: 다운로드가 성공적으로 완료되면 호출됩니다.
-      .on('close', () => {
-        console.log(`[Main Process] 다운로드 완료: ${filePath}`);
-        // 다운로드가 100% 완료되었음을 'download-progress'로 알리고, 별도로 'download-complete' 이벤트도 보냅니다.
-        win.webContents.send('download-complete', { itag: formatCode, filePath: filePath });
-
-        // 도우미 함수를 호출하여 다운로드 기록을 깔끔하게 저장합니다.
-        addDownloadToHistory({
-          id: `${Date.now()}-${formatCode}`, // 고유 ID 생성
-          title: sanitizedTitle,
-          filePath: filePath,
-          type: extension,
-          downloadedAt: new Date().toISOString(),
-        });
-      });
-  }
-});
+    }
+  },
+);

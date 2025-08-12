@@ -1,19 +1,17 @@
 {
   "compilerOptions": {
-    "outDir": "../app",
+    "target": "es2020",
+    "module": "commonjs",
+    "lib": ["es2020"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "allowSyntheticDefaultImports": true,
-    "baseUrl": ".",
-    "module": "ESNext",
-    "target": "ES2020",
-    "paths": {
-      "@/*": [
-        "./*"
-      ]
-    }
+    "outDir": "../dist/electron",
+    "rootDir": ".",
+    "resolveJsonModule": true,
+    "sourceMap": true
   },
-  "include": ["./**/*.ts"]
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules"]
 }

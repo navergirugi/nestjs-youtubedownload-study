@@ -2,15 +2,14 @@
   "name": "youtube-downloader-app",
   "version": "0.1.0",
   "private": true,
-  "main": "app/main.js",
-  "type": "module",
+  "main": "dist/electron/main.js",
   "scripts": {
     "dev": "concurrently \"yarn:dev:next\" \"yarn:dev:electron\" --kill-others",
     "dev:next": "next dev renderer",
     "dev:electron": "wait-on http://localhost:3000 && yarn build:electron && electron .",
     "build": "yarn build:electron && yarn build:next",
     "build:next": "next build renderer",
-    "build:electron": "tsc -p electron",
+    "build:electron": "tsc -p ./electron/tsconfig.json",
     "dist": "yarn build && next export renderer -o dist/renderer && electron-builder",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "format": "prettier --write ."
@@ -43,7 +42,7 @@
     "appId": "com.ssyoutube.clone",
     "productName": "SSYouTube Downloader",
     "files": [
-      "app/**/*",
+      "dist/electron/**/*",
       "dist/renderer/**/*",
       "package.json"
     ],

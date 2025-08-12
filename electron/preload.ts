@@ -63,7 +63,7 @@ const api = {
     ipcRenderer.on('download-error', callback);
     // 마찬가지로, 리스너를 정리하는 클린업 함수를 반환합니다.
     return () => {
-      ipcRenderer.removeAllListeners('download-error');
+      ipcRenderer.removeListener('download-error', callback);
     };
   },
 };
