@@ -8,7 +8,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 // Node.js의 내장 모듈로, 파일 및 디렉토리 경로를 처리하는 유틸리티를 제공합니다.
 import * as path from 'path';
 // 현재 환경이 개발 환경인지 프로덕션(배포) 환경인지 쉽게 확인하게 해주는 유틸리티입니다.
-import * as isDev from 'electron-is-dev';
+import isDev from 'electron-is-dev';
 // yt-dlp 명령줄 도구를 Node.js에서 쉽게 사용할 수 있도록 감싸주는 라이브러리입니다.
 import YtDlpWrap from 'yt-dlp-wrap';
 // yt-dlp가 반환하는 데이터의 타입을 정의해둔 파일을 가져옵니다. 코드의 안정성을 높여줍니다.
@@ -16,9 +16,9 @@ import { YTDlpFormat, YTDlpMetadata } from './yt-dlp-types';
 // Node.js의 내장 모듈로, 파일 시스템과 상호작용(파일 읽기, 쓰기 등)하는 기능을 제공합니다.
 import * as fs from 'fs';
 // 앱의 설정(다운로드 경로, 기록 등)을 JSON 파일에 영구적으로 저장하고 불러오는 라이브러리입니다.
-// `import * as Store from ...` 구문을 사용하여 모듈 전체를 'Store'라는 이름의 객체로 가져옵니다.
-// 최신 `electron-store`는 ES 모듈 방식으로 `export default`를 사용하므로, 실제 클래스는 `Store.default`에 있습니다.
-import * as Store from 'electron-store';
+import Store from 'electron-store';
+
+let store: any;
 
 // --- 앱 설정을 위한 스키마 정의 ---
 // electron-store에 저장될 데이터의 구조와 타입을 명확하게 정의합니다.
@@ -36,12 +36,35 @@ type DownloadHistoryItem = {
 type StoreSchema = {
   downloadPath: string;
   downloadHistory: DownloadHistoryItem[];
+    // downloadHistory: string[];
+};
+
+// --- IPC 통신을 위한 타입 정의 ---
+
+// UI에서 다운로드 요청 시 보내는 데이터의 구조를 정의합니다.
+type DownloadRequest = {
+  url: string;
+  formatCode: string;
+  type: 'mp4' | 'mp3';
+  title: string;
+};
+
+// yt-dlp 포맷 정보를 UI에 맞게 가공한 후의 데이터 구조를 정의합니다.
+type ProcessedFormat = {
+  itag: string | undefined;
+  quality: string;
+  container: string;
+  contentLength: string | undefined;
+  type: 'mp4' | 'mp3';
 };
 
 // store 변수를 선언만 해둡니다. 실제 초기화는 app.whenReady() 안에서 이루어집니다.
 // 이렇게 해야 app.getPath() 같은 함수를 안전하게 사용할 수 있습니다.
-// 타입과 생성자 모두 `Store`가 아닌 `Store.default`를 사용하도록 수정합니다.
-let store: Store.default<StoreSchema>;
+// let store: Store<StoreSchema>;
+
+// store = new Store<StoreSchema>();
+
+// store.set('downloadPath', '/tmp');
 
 // yt-dlp 실행 파일을 저장할 전용 디렉토리를 앱의 사용자 데이터 폴더에 지정합니다.
 // 이 방법은 어떤 OS에서든 앱이 쓰기 권한을 가진 안전한 경로를 보장합니다.
@@ -100,7 +123,9 @@ app.whenReady().then(async () => {
   // --- Store 초기화 ---
   // 앱이 준비된 후에 Store 인스턴스를 생성합니다.
   // 이렇게 하면 app.getPath() 같은 Electron API를 안전하게 사용할 수 있습니다.
-  store = new Store.default<StoreSchema>({
+  /*
+  */
+  store = new Store<StoreSchema>({
     // defaults는 앱을 처음 실행했을 때 설정될 기본값입니다.
     defaults: {
       downloadPath: app.getPath('downloads'), // OS의 기본 '다운로드' 폴더를 기본값으로 사용합니다.
@@ -150,7 +175,7 @@ app.on('activate', () => {
 // UI가 저장된 다운로드 경로를 요청할 때 처리합니다.
 ipcMain.handle('get-download-path', () => {
   // store에서 'downloadPath' 키로 저장된 값을 가져와 반환합니다.
-  return store.get('downloadPath');
+    return store.get('downloadPath');
 });
 
 // UI가 새로운 기본 다운로드 경로를 설정하려고 할 때 처리합니다.
@@ -190,6 +215,81 @@ ipcMain.handle('show-item-in-folder', (event, filePath: string) => {
   shell.showItemInFolder(filePath);
 });
 
+// --- 다운로드 기록 관리를 위한 도우미 함수 ---
+/**
+ * 다운로드 완료된 항목을 기록에 추가하고, 최대 개수를 유지합니다.
+ * @param item - 기록에 추가할 다운로드 정보
+ */
+function addDownloadToHistory(item: DownloadHistoryItem) {
+  const history = store.get('downloadHistory', [])
+      .filter((h: DownloadHistoryItem) => h.filePath !== item.filePath); // 기존에 같은 파일 경로가 있다면 제거 (재다운로드 시 중복 방지)
+
+  history.unshift(item); // 새 항목을 배열 맨 앞에 추가
+
+  // 기록은 최대 50개까지만 저장합니다.
+  store.set('downloadHistory', history.slice(0, 50));
+}
+
+// --- 비디오/오디오 포맷 처리 로직을 위한 도우미 함수 ---
+
+/**
+ * 메타데이터에서 UI에 표시할 비디오 포맷 목록을 필터링하고 가공합니다.
+ * @param formats - yt-dlp에서 받은 전체 포맷 목록
+ * @param bestAudioSize - 합산 파일 크기 계산에 사용할 오디오 파일 크기
+ * @returns UI에 표시하기 좋은 형태로 가공된 비디오 포맷 배열
+ */
+function processVideoFormats(
+  formats: YTDlpFormat[],
+  bestAudioSize: number,
+): ProcessedFormat[] {
+  const seenResolutions = new Set<number>();
+  return formats
+    .filter(
+      (f) => f.vcodec !== 'none' && f.acodec === 'none' && f.ext === 'mp4' && f.height,
+    )
+    .sort((a, b) => (b.height ?? 0) - (a.height ?? 0))
+    .filter((f) => {
+      const height = f.height!;
+      if (seenResolutions.has(height)) {
+        return false;
+      }
+      seenResolutions.add(height);
+      return true;
+    })
+    .map((f) => {
+      const qualityLabel =
+        f.format_note?.match(/\d+p/)?.[0] || (f.height ? `${f.height}p` : f.resolution);
+      const videoSize = f.filesize || f.filesize_approx || 0;
+      const totalSize = videoSize + bestAudioSize;
+      return {
+        itag: f.format_id,
+        quality: qualityLabel || 'Unknown',
+        container: f.ext,
+        contentLength: totalSize > 0 ? totalSize.toString() : undefined,
+        type: 'mp4',
+      };
+    });
+}
+
+/**
+ * 메타데이터에서 UI에 표시할 오디오 포맷 목록을 필터링하고 가공합니다.
+ * @param formats - yt-dlp에서 받은 전체 포맷 목록
+ * @returns UI에 표시하기 좋은 형태로 가공된 오디오 포맷 배열
+ */
+function processAudioFormats(formats: YTDlpFormat[]): ProcessedFormat[] {
+  return formats
+    .filter((f) => f.vcodec === 'none' && f.acodec !== 'none' && (f.abr ?? 0) > 0)
+    .sort((a, b) => (b.abr ?? 0) - (a.abr ?? 0))
+    .slice(0, 3)
+    .map((f) => ({
+      itag: f.format_id,
+      quality: `${Math.round(f.abr ?? 0)}kbps`,
+      container: f.ext,
+      contentLength: (f.filesize || f.filesize_approx)?.toString(),
+      type: 'mp3',
+    }));
+}
+
 // 비디오 정보 요청 처리
 // ipcMain.handle은 UI(Renderer)에서 보낸 'get-video-info' 요청을 비동기적으로 처리합니다.
 ipcMain.handle('get-video-info', async (event, url) => {
@@ -198,102 +298,40 @@ ipcMain.handle('get-video-info', async (event, url) => {
     // yt-dlp를 이용해 해당 URL의 메타데이터(제목, 썸네일, 포맷 목록 등)를 가져옵니다.
     const metadata: YTDlpMetadata = await ytDlpWrap.getVideoInfo(url);
 
-    // --- 오디오 포맷 필터링 및 정제 (가장 좋은 음질 하나만 찾기) ---
-    // 비디오 포맷의 예상 파일 크기를 계산하는 데 사용됩니다.
+    // 가장 좋은 음질의 오디오 포맷을 찾아 파일 크기를 계산합니다.
     const bestAudioFormat = metadata.formats
       .filter((f: YTDlpFormat) => f.vcodec !== 'none' && f.acodec !== 'none' && (f.abr ?? 0) > 0)
       .sort((a: YTDlpFormat, b: YTDlpFormat) => (b.abr ?? 0) - (a.abr ?? 0))[0]; // 정렬 후 첫 번째 항목 선택
 
     const bestAudioSize = bestAudioFormat?.filesize || bestAudioFormat?.filesize_approx || 0;
 
-    // --- 비디오 포맷 필터링 및 정제 (UI에 표시할 목록) ---
-    // 1. 고화질(비디오만 있는) MP4 포맷만 필터링합니다.
-    // 2. 화질(세로 해상도)을 기준으로 내림차순 정렬합니다. (예: 1080p, 720p, 480p 순)
-    // 3. 중복된 화질을 제거합니다. (예: 1080p 포맷이 여러 개 있으면 가장 좋은 하나만 남김)
-    const seenResolutions = new Set<number>(); // 이미 처리한 화질(세로 해상도)을 기록하기 위한 Set
-    const videoFormats = metadata.formats
-      // 비디오만 있는(소리 없는) 고화질 mp4 포맷을 찾도록 수정
-      // 유튜브는 고화질 영상의 경우 비디오와 오디오를 분리해서 제공합니다.
-      // vcodec(비디오 코덱)이 있고, acodec(오디오 코덱)은 없으며, 확장자가 mp4인 것만 고릅니다.
-      .filter(
-        (f: YTDlpFormat) =>
-          f.vcodec !== 'none' && f.acodec === 'none' && f.ext === 'mp4' && f.height,
-      )
-      // 화질(세로 픽셀) 기준으로 내림차순 정렬
-      .sort((a, b) => {
-        return (b.height ?? 0) - (a.height ?? 0);
-      })
-      // 중복 화질 제거
-      .filter((f: YTDlpFormat) => {
-        const height = f.height!;
-        if (seenResolutions.has(height)) {
-          return false; // 이미 더 좋은 화질의 동일 해상도 포맷이 있으므로 건너뜀
-        } else {
-          seenResolutions.add(height);
-          return true; // 새로운 화질이므로 목록에 포함
-        }
-      })
-      // UI에서 사용하기 좋은 형태로 데이터를 가공(map)합니다.
-      .map((f: YTDlpFormat) => {
-        // 화질 라벨을 생성합니다. (예: '1080p', '720p')
-        // f.format_note에 '1080p' 같은 정보가 있으면 우선 사용하고, 없으면 f.height 값을 사용합니다.
-        const qualityLabel =
-          f.format_note?.match(/\d+p/)?.[0] || (f.height ? `${f.height}p` : f.resolution);
-
-        // 비디오 파일 크기와 가장 좋은 오디오 파일 크기를 합산하여 예상 전체 크기를 계산합니다.
-        const videoSize = f.filesize || f.filesize_approx || 0;
-        const totalSize = videoSize + bestAudioSize;
-
-        return {
-          itag: f.format_id,
-          quality: qualityLabel || 'Unknown', // '1080p' 같은 화질 정보
-          container: f.ext,
-          contentLength: totalSize > 0 ? totalSize.toString() : undefined, // 파일 크기
-          type: 'mp4',
-        };
-      });
-
-    // --- 오디오 포맷 필터링 및 정제 ---
-    // 1. 유효한 오디오 포맷만 필터링합니다.
-    // 2. 음질(abr)을 기준으로 내림차순 정렬합니다.
-    // 3. 가장 음질이 좋은 상위 3개만 선택합니다.
-    const audioFormats = metadata.formats
-      // 비트레이트(abr)가 0보다 큰, 유효한 오디오 포맷만 필터링하도록 조건 추가
-      // vcodec은 없고, acodec은 있으며, 오디오 비트레이트(abr)가 0보다 큰 것만 고릅니다.
-      .filter((f: YTDlpFormat) => f.vcodec === 'none' && f.acodec !== 'none' && (f.abr ?? 0) > 0)
-      // 음질(abr)이 높은 순서대로 정렬합니다.
-      .sort((a: YTDlpFormat, b: YTDlpFormat) => (b.abr ?? 0) - (a.abr ?? 0))
-      // 가장 좋은 음질 3개만 잘라냅니다.
-      .slice(0, 3)
-      // UI에서 사용하기 좋은 형태로 데이터를 가공합니다.
-      .map((f: YTDlpFormat) => ({
-        itag: f.format_id,
-        quality: `${Math.round(f.abr ?? 0)}kbps`, // '128kbps' 같은 음질 정보
-        container: f.ext,
-        contentLength: (f.filesize || f.filesize_approx)?.toString(),
-        type: 'mp3', // 다운로드 시 MP3로 변환할 것을 표시
-      }));
+    // 도우미 함수를 호출하여 비디오와 오디오 포맷 목록을 각각 생성합니다.
+    const videoFormats = processVideoFormats(metadata.formats, bestAudioSize);
+    const audioFormats = processAudioFormats(metadata.formats);
 
     // 최종적으로 UI에 전달할 결과 객체를 만듭니다.
     const result = {
       title: metadata.title,
       thumbnail: metadata.thumbnail,
-      // 정제된 비디오와 오디오 포맷 목록을 UI에 전달하기 위해 하나로 합칩니다.
       formats: [...videoFormats, ...audioFormats],
     };
     console.log(`[Main Process] 정보 가져오기 성공. 제목: ${result.title}`);
     // 성공 결과를 UI로 반환합니다.
     return result;
-  } catch (error: any) {
+  } catch (error) {
     console.error('[Main Process] 정보 가져오기 중 오류 발생:', error);
+    // 오류가 Error 객체의 인스턴스인지 확인하여 안전하게 message 속성에 접근합니다.
+    const errorMessage =
+      error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
+
     // 오류 발생 시, 오류 정보를 담은 객체를 UI로 반환합니다.
-    return { error: error.message || '알 수 없는 오류가 발생했습니다.' };
+    return { error: errorMessage };
   }
 });
 
 // 다운로드 요청 처리
 // UI에서 보낸 'download-video' 요청을 처리합니다.
-ipcMain.handle('download-video', async (event, { url, formatCode, type, title }) => {
+ipcMain.handle('download-video', async (event, { url, formatCode, type, title }: DownloadRequest) => {
   // 이 요청을 보낸 UI 창(BrowserWindow)을 찾습니다.
   const win = BrowserWindow.fromWebContents(event.sender)!;
   // 파일명으로 사용할 수 없는 문자들을 제거합니다.
@@ -303,12 +341,16 @@ ipcMain.handle('download-video', async (event, { url, formatCode, type, title })
   // 사용자가 설정한 기본 다운로드 경로를 가져옵니다.
   const defaultDownloadPath = store.get('downloadPath');
 
+  // 파일 저장 다이얼로그에 표시할 기본 파일 경로를 구성합니다.
+  const defaultFileName = `${sanitizedTitle}.${extension}`;
+  const fullDefaultPath = defaultDownloadPath
+    ? path.join(defaultDownloadPath, defaultFileName)
+    : defaultFileName;
+
   // '파일 저장' 다이얼로그를 띄울 때 사용할 옵션을 구성합니다.
   const saveDialogOptions: Electron.SaveDialogOptions = {
     title: '파일 저장 위치 선택',
-    defaultPath: defaultDownloadPath
-      ? path.join(defaultDownloadPath, `${sanitizedTitle}.${extension}`)
-      : `${sanitizedTitle}.${extension}`,
+    defaultPath: fullDefaultPath,
     filters: [{ name: type === 'mp4' ? 'MP4 Video' : 'MP3 Audio', extensions: [extension] }],
   };
   const { filePath } = await dialog.showSaveDialog(win, saveDialogOptions);
@@ -339,12 +381,13 @@ ipcMain.handle('download-video', async (event, { url, formatCode, type, title })
         });
       })
       // 'error' 이벤트 리스너: 다운로드 중 오류가 발생하면 호출됩니다.
-      .on('error', (error) => {
+      .on('error', (error: unknown) => {
         console.error('[Main Process] 다운로드 오류:', error);
+          const errorMessage = error instanceof Error ? error.message : 'An unknown download error occurred.';
         // 'download-error' 채널로 UI에 오류 정보를 보냅니다.
         win.webContents.send('download-error', {
           itag: formatCode,
-          error: error.message,
+          error: errorMessage,
         });
       })
       // 'close' 이벤트 리스너: 다운로드가 성공적으로 완료되면 호출됩니다.
@@ -353,21 +396,14 @@ ipcMain.handle('download-video', async (event, { url, formatCode, type, title })
         // 다운로드가 100% 완료되었음을 'download-progress'로 알리고, 별도로 'download-complete' 이벤트도 보냅니다.
         win.webContents.send('download-complete', { itag: formatCode, filePath: filePath });
 
-        // --- 다운로드 기록 저장 ---
-        const history = store
-          .get('downloadHistory', [])
-          .filter((item: DownloadHistoryItem) => item.filePath !== filePath); // 중복 방지
-        history.unshift({
-          // 배열의 맨 앞에 추가
+        // 도우미 함수를 호출하여 다운로드 기록을 깔끔하게 저장합니다.
+        addDownloadToHistory({
           id: `${Date.now()}-${formatCode}`, // 고유 ID 생성
           title: sanitizedTitle,
           filePath: filePath,
           type: extension,
           downloadedAt: new Date().toISOString(),
         });
-
-        // 기록은 최대 50개까지만 저장합니다.
-        store.set('downloadHistory', history.slice(0, 50));
       });
   }
 });

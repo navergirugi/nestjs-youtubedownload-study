@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "main": "app/main.js",
+  "type": "module",
   "scripts": {
     "dev": "concurrently \"yarn:dev:next\" \"yarn:dev:electron\" --kill-others",
     "dev:next": "next dev renderer",
