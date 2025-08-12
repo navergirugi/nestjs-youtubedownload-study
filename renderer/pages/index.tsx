@@ -117,9 +117,14 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(''); // URL 분석 시 발생하는 오류
 
-  // 다운로드 진행 상태를 관리하는 객체들
-  // Record<string, ...>는 { 'itag1': value1, 'itag2': value2 } 와 같은 형태의 객체를 의미합니다.
+  // 다운로드 진행 상태를 관리하는 객체. { 'itag': progress } 형태입니다.
   const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
+
+  // 다운로드 오류 상태를 관리하는 객체. { itag: errorMessage } 형태입니다.
+  const [downloadErrors, setDownloadErrors] = useState<Record<string, string | undefined>>({});
+
+  // 다운로드가 완료된 파일의 경로를 관리하는 객체. { itag: filePath } 형태입니다.
+  const [completedFiles, setCompletedFiles] = useState<Record<string, string>>({});
 
   // useEffect 훅: 컴포넌트가 처음 렌더링될 때 특정 작업을 수행하게 합니다. (여기서는 백엔드 이벤트 리스너 설정)
   // 다운로드 진행률 업데이트 리스너 설정
@@ -137,12 +142,23 @@ export default function Home() {
     return cleanup;
   }, []);
 
-  // 다운로드 오류 업데이트 리스너 설정
+  // 다운로드 완료 리스너 설정
   useEffect(() => {
-    // 백엔드에서 보내는 'download-error' 이벤트를 수신 대기합니다.
+    // 백엔드에서 보내는 'download-complete' 이벤트를 수신 대기합니다.
+    const cleanup = window.api.onDownloadComplete((_, { itag, filePath }) => {
+      // 완료 데이터가 오면, completedFiles 상태를 업데이트합니다.
+      setCompletedFiles((prev) => ({ ...prev, [itag]: filePath }));
+    });
+    return cleanup;
+  }, []);
+
+  // 다운로드 오류 리스너 설정
+  useEffect(() => {
     const cleanup = window.api.onDownloadError((_, { itag, error }) => {
       // 오류 데이터가 오면, downloadErrors 상태를 업데이트합니다.
       setDownloadErrors((prev) => ({ ...prev, [itag]: error }));
+      // 진행률을 undefined로 설정하여 프로그레스 바를 숨깁니다.
+      setDownloadProgress((prev) => ({ ...prev, [itag]: undefined }));
     });
     return cleanup;
   }, []);
@@ -159,6 +175,7 @@ export default function Home() {
     setVideoInfo(null);
     setDownloadProgress({});
     setDownloadErrors({});
+    setCompletedFiles({});
 
     console.log(`[Home] handleFetchInfo start : ${url}`);
     // window.api를 통해 백엔드에 비디오 정보 요청을 보냅니다.
@@ -248,6 +265,7 @@ export default function Home() {
                               format={format}
                               progress={downloadProgress[format.itag]}
                               error={downloadErrors[format.itag]}
+                              filePath={completedFiles[format.itag]}
                               onDownload={() => handleDownload(format)}
                             />
                           ))}
@@ -270,6 +288,7 @@ export default function Home() {
                               format={format}
                               progress={downloadProgress[format.itag]}
                               error={downloadErrors[format.itag]}
+                              filePath={completedFiles[format.itag]}
                               onDownload={() => handleDownload(format)}
                             />
                           ))}

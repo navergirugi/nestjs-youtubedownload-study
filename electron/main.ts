@@ -16,25 +16,32 @@ import { YTDlpFormat, YTDlpMetadata } from './yt-dlp-types';
 // Node.js의 내장 모듈로, 파일 시스템과 상호작용(파일 읽기, 쓰기 등)하는 기능을 제공합니다.
 import * as fs from 'fs';
 // 앱의 설정(다운로드 경로, 기록 등)을 JSON 파일에 영구적으로 저장하고 불러오는 라이브러리입니다.
-import Store from 'electron-store';
+// `import * as Store from ...` 구문을 사용하여 모듈 전체를 'Store'라는 이름의 객체로 가져옵니다.
+// 최신 `electron-store`는 ES 모듈 방식으로 `export default`를 사용하므로, 실제 클래스는 `Store.default`에 있습니다.
+import * as Store from 'electron-store';
 
 // --- 앱 설정을 위한 스키마 정의 ---
 // electron-store에 저장될 데이터의 구조와 타입을 명확하게 정의합니다.
 // 이렇게 하면 자동완성 기능을 활용할 수 있고, 잘못된 타입의 데이터가 저장되는 것을 방지하여 코드 안정성을 높입니다.
+
+// HistoryItem 타입을 별도로 정의하여 재사용성을 높입니다.
+type DownloadHistoryItem = {
+  id: string;
+  title: string;
+  filePath: string;
+  type: 'mp4' | 'mp3';
+  downloadedAt: string;
+};
+
 type StoreSchema = {
   downloadPath: string;
-  downloadHistory: {
-    id: string;
-    title: string;
-    filePath: string;
-    type: 'mp4' | 'mp3';
-    downloadedAt: string;
-  }[];
+  downloadHistory: DownloadHistoryItem[];
 };
 
 // store 변수를 선언만 해둡니다. 실제 초기화는 app.whenReady() 안에서 이루어집니다.
 // 이렇게 해야 app.getPath() 같은 함수를 안전하게 사용할 수 있습니다.
-let store: Store<StoreSchema>;
+// 타입과 생성자 모두 `Store`가 아닌 `Store.default`를 사용하도록 수정합니다.
+let store: Store.default<StoreSchema>;
 
 // yt-dlp 실행 파일을 저장할 전용 디렉토리를 앱의 사용자 데이터 폴더에 지정합니다.
 // 이 방법은 어떤 OS에서든 앱이 쓰기 권한을 가진 안전한 경로를 보장합니다.
@@ -93,7 +100,7 @@ app.whenReady().then(async () => {
   // --- Store 초기화 ---
   // 앱이 준비된 후에 Store 인스턴스를 생성합니다.
   // 이렇게 하면 app.getPath() 같은 Electron API를 안전하게 사용할 수 있습니다.
-  store = new Store<StoreSchema>({
+  store = new Store.default<StoreSchema>({
     // defaults는 앱을 처음 실행했을 때 설정될 기본값입니다.
     defaults: {
       downloadPath: app.getPath('downloads'), // OS의 기본 '다운로드' 폴더를 기본값으로 사용합니다.
@@ -343,13 +350,13 @@ ipcMain.handle('download-video', async (event, { url, formatCode, type, title })
       // 'close' 이벤트 리스너: 다운로드가 성공적으로 완료되면 호출됩니다.
       .on('close', () => {
         console.log(`[Main Process] 다운로드 완료: ${filePath}`);
-        // 다운로드가 100% 완료되었음을 UI에 알립니다.
-        win.webContents.send('download-progress', { itag: formatCode, percent: 100, filePath }); // 완료 시 파일 경로 포함
+        // 다운로드가 100% 완료되었음을 'download-progress'로 알리고, 별도로 'download-complete' 이벤트도 보냅니다.
+        win.webContents.send('download-complete', { itag: formatCode, filePath: filePath });
 
         // --- 다운로드 기록 저장 ---
         const history = store
           .get('downloadHistory', [])
-          .filter((item) => item.filePath !== filePath); // 중복 방지
+          .filter((item: DownloadHistoryItem) => item.filePath !== filePath); // 중복 방지
         history.unshift({
           // 배열의 맨 앞에 추가
           id: `${Date.now()}-${formatCode}`, // 고유 ID 생성

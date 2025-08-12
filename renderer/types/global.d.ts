@@ -42,6 +42,9 @@ declare global {
           data: { itag: string; percent: number; filePath: string | null },
         ) => void,
       ) => () => void;
+      onDownloadComplete: (
+        callback: (event: IpcRendererEvent, data: { itag: string; filePath: string }) => void,
+      ) => () => void;
       onDownloadError: (
         callback: (event: any, data: { itag: string; error: string }) => void,
       ) => () => void;

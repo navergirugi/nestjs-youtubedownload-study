@@ -1,6 +1,7 @@
 // contextBridge: 안전하게 Main 프로세스와 Renderer 프로세스 간에 통신할 수 있는 API를 노출시키는 모듈
 // ipcRenderer: Renderer 프로세스에서 Main 프로세스로 비동기 메시지를 보내는 모듈
 import { contextBridge, ipcRenderer } from 'electron';
+import IpcRendererEvent = Electron.IpcRendererEvent;
 
 // UI(Renderer)에서 호출할 수 있는 함수들을 정의합니다.
 // 이 객체에 정의된 함수들만 UI의 window.api를 통해 접근할 수 있습니다.
@@ -29,29 +30,35 @@ const api = {
   getDownloadHistory: () => ipcRenderer.invoke('get-download-history'),
   // 다운로드 기록 삭제하기
   clearDownloadHistory: () => ipcRenderer.invoke('clear-download-history'),
+  onDownloadComplete: (
+    callback: (event: IpcRendererEvent, data: { itag: string; filePath: string }) => void,
+  ) => {
+    ipcRenderer.on('download-complete', callback);
+    return () => {
+      ipcRenderer.removeListener('download-complete', callback);
+    };
+  },
   // 파일이 있는 폴더 열기
   showItemInFolder: (filePath: string) => ipcRenderer.invoke('show-item-in-folder', filePath),
 
   // Main 프로세스로부터 오는 다운로드 진행률 수신
   // 이 함수는 UI에서 콜백 함수를 등록하는 데 사용됩니다.
   onDownloadProgress: (
-    // 완료 시 filePath가 포함되므로 data 타입 수정
-    callback: (
-      event: any,
-      data: { itag: string; percent: number; filePath: string | null },
-    ) => void,
+    callback: (event: IpcRendererEvent, data: { itag: string; percent: number }) => void,
   ) => {
     // Main 프로세스가 'download-progress' 채널로 데이터를 보낼 때마다 등록된 콜백 함수가 실행됩니다.
     ipcRenderer.on('download-progress', callback);
     // 클린업(정리) 함수를 반환합니다.
     // React 컴포넌트가 언마운트될 때 이 함수를 호출하여, 불필요한 메모리 누수를 방지하기 위해 리스너를 제거합니다.
     return () => {
-      ipcRenderer.removeAllListeners('download-progress');
+      ipcRenderer.removeListener('download-progress', callback);
     };
   },
 
   // Main 프로세스로부터 오는 다운로드 오류 수신
-  onDownloadError: (callback: (event: any, data: { itag: string; error: string }) => void) => {
+  onDownloadError: (
+    callback: (event: IpcRendererEvent, data: { itag: string; error: string }) => void,
+  ) => {
     // Main 프로세스가 'download-error' 채널로 데이터를 보낼 때마다 등록된 콜백 함수가 실행됩니다.
     ipcRenderer.on('download-error', callback);
     // 마찬가지로, 리스너를 정리하는 클린업 함수를 반환합니다.
