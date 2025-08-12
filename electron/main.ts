@@ -5,20 +5,37 @@
 // dialog: 파일 열기/저장 같은 네이티브 시스템 다이얼로그를 표시하는 모듈
 // shell: 파일 시스템의 파일을 관리하는 데 사용되는 유틸리티 (예: 폴더에서 파일 보기)
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
-// Node.js의 내장 모듈로, 파일 및 디렉토리 경로를 처리하는 유틸리티를 제공합니다.
 import * as path from 'path';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 // 현재 환경이 개발 환경인지 프로덕션(배포) 환경인지 쉽게 확인하게 해주는 유틸리티입니다.
 import isDev from 'electron-is-dev';
+// ESM 모듈인 electron-store와 yt-dlp-wrap을 직접 가져옵니다.
+import Store from 'electron-store';
 // yt-dlp가 반환하는 데이터의 타입을 정의해둔 파일을 가져옵니다. 코드의 안정성을 높여줍니다.
-import { YTDlpFormat, YTDlpMetadata } from './yt-dlp-types';
+import { YTDlpFormat, YTDlpMetadata } from './yt-dlp-types.js';
 // Node.js의 내장 모듈로, 파일 시스템과 상호작용(파일 읽기, 쓰기 등)하는 기능을 제공합니다.
 import * as fs from 'fs';
-// 앱의 설정(다운로드 경로, 기록 등)을 JSON 파일에 영구적으로 저장하고 불러오는 라이브러리입니다.
-// yt-dlp-wrap과 electron-store는 모두 ESM이므로, 타입 정보만 가져오고 실제 모듈은 동적으로 로드합니다.
-// `import = require()` 구문은 복잡한 모듈 환경에서 타입을 가장 안정적으로 가져오는 방법입니다.
-// 수많은 시도에도 타입 해석에 실패하므로, 타입 검사를 비활성화하여 문제를 최종적으로 해결합니다.
-// import type YtDlpWrap = require('yt-dlp-wrap');
-// import type Store = require('electron-store');
+
+// --- CJS 모듈(yt-dlp-wrap) 호환성 처리 ---
+// `yt-dlp-wrap`은 구형 CommonJS(CJS) 모듈이므로, 최신 ESM 프로젝트에서 사용하려면 특별한 처리가 필요합니다.
+
+// 1. 타입(Type) 가져오기: `import()` 타입을 사용하여 모듈의 타입 정보를 가져옵니다.
+// `typeof import(...)`는 클래스 생성자(constructor)의 타입을 가져옵니다.
+// 최신 ESM이 구형 CJS 모듈을 불러올 때, 모듈의 `exports`는 `.default` 프로퍼티 안에 담깁니다.
+// 따라서 `import('yt-dlp-wrap')`의 타입에서 `.default`를 꺼내야 진짜 클래스 생성자의 타입을 얻을 수 있습니다.
+type YtDlpWrapConstructor = (typeof import('yt-dlp-wrap'))['default'];
+// `InstanceType<...>` 유틸리티를 사용하여, 생성자로부터 인스턴스의 타입을 추론합니다.
+type YtDlpWrapInstance = InstanceType<YtDlpWrapConstructor>;
+
+// ESM 프로젝트에서 CJS 모듈(yt-dlp-wrap)을 안정적으로 불러오기 위해 require를 생성합니다.
+const require = createRequire(import.meta.url);
+// 2. 값(Value) 가져오기: `require`를 사용하여 실제 클래스 생성자(값)를 불러온 뒤, 위에서 정의한 타입으로 지정해줍니다.
+const YtDlpWrap = require('yt-dlp-wrap') as YtDlpWrapConstructor;
+
+// ESM 환경에서는 __dirname, __filename 변수가 없으므로, import.meta.url을 사용하여 직접 정의합니다.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // --- 앱 설정을 위한 스키마 정의 ---
 // electron-store에 저장될 데이터의 구조와 타입을 명확하게 정의합니다.
@@ -39,13 +56,11 @@ type StoreSchema = {
   // downloadHistory: string[];
 };
 
-// store 변수를 선언하고, 타입 안정성을 위해 정확한 타입을 지정합니다.
-// `import = require()`로 가져온 타입은 네임스페이스처럼 동작하므로, 실제 클래스 타입은 `.default`로 접근해야 합니다.
-// any 타입을 사용하여 TypeScript의 타입 검사를 비활성화하고, 런타임에 의존하도록 합니다.
-let store: any;
+// 타입 안정성을 위해 정확한 타입을 지정합니다.
+let store: Store<StoreSchema>;
 
 // ytDlpWrap 인스턴스를 담을 변수를 선언합니다.
-let ytDlpWrap: any;
+let ytDlpWrap: YtDlpWrapInstance;
 
 // --- IPC 통신을 위한 타입 정의 ---
 
@@ -114,44 +129,40 @@ function createWindow() {
 
 // Electron 앱이 준비되면 (초기화 완료) 이 함수를 실행합니다.
 app.whenReady().then(async () => {
-  // --- Dynamic Imports for ESM modules ---
-  // electron-store와 yt-dlp-wrap은 CommonJS 환경에서 사용하기 위해 동적으로 가져옵니다.
-  const StoreClass = (await import('electron-store')).default;
-  const YtDlpWrapClass = (await import('yt-dlp-wrap')).default;
-
-  // --- Store 초기화 ---
-  store = new StoreClass<StoreSchema>({
-    // defaults는 앱을 처음 실행했을 때 설정될 기본값입니다.
-    defaults: {
-      downloadPath: app.getPath('downloads'), // OS의 기본 '다운로드' 폴더를 기본값으로 사용합니다.
-      downloadHistory: [],
-    },
-  });
-
   try {
+    // --- Store 초기화 ---
+    // 프로젝트가 ESM으로 전환되었으므로, 파일 상단에서 직접 import한 클래스를 사용합니다.
+    store = new Store<StoreSchema>({
+      // defaults는 앱을 처음 실행했을 때 설정될 기본값입니다.
+      defaults: {
+        downloadPath: app.getPath('downloads'), // OS의 기본 '다운로드' 폴더를 기본값으로 사용합니다.
+        downloadHistory: [],
+      },
+    });
+
     console.log('[Main Process] Checking and downloading yt-dlp binary...');
     // 앱이 UI를 띄우기 전에, yt-dlp 실행 파일이 다운로드되었는지 확인하고 없으면 다운로드합니다.
     // 파일이 이미 존재하면 중복으로 다운로드하지 않으므로 효율적입니다.
-    await YtDlpWrapClass.downloadFromGithub(ytDlpPath);
+    await YtDlpWrap.downloadFromGithub(ytDlpPath);
     console.log('[Main Process] yt-dlp binary is ready.');
+
+    // --- YtDlpWrap 인스턴스 생성 ---
+    ytDlpWrap = new YtDlpWrap();
+    ytDlpWrap.setBinaryPath(ytDlpPath);
+
+    // 모든 준비가 끝나면 메인 윈도우를 생성합니다.
+    createWindow();
   } catch (error) {
-    console.error('[Main Process] Failed to download yt-dlp binary:', error);
-    // 만약 다운로드에 실패하면 (예: 인터넷 연결 문제), 사용자에게 오류 메시지를 보여줍니다.
+    console.error('[Main Process] Failed to initialize the application:', error);
+    // 앱 초기화 중 어떤 단계에서든 오류가 발생하면 사용자에게 알립니다.
     dialog.showErrorBox(
       'Critical Error',
-      'Failed to download a required component (yt-dlp). Please check your internet connection and restart the application.',
+      'Failed to initialize the application. Please check your internet connection and restart.\n\n' +
+        (error instanceof Error ? error.message : String(error)),
     );
     // 앱을 종료합니다.
     app.quit();
-    return;
   }
-
-  // --- YtDlpWrap 인스턴스 생성 ---
-  ytDlpWrap = new YtDlpWrapClass();
-  ytDlpWrap.setBinaryPath(ytDlpPath);
-
-  // yt-dlp 준비가 끝나면 메인 윈도우를 생성합니다.
-  createWindow();
 });
 
 // 모든 창이 닫혔을 때 앱을 종료하는 리스너입니다.

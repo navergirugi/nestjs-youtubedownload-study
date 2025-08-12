@@ -2,7 +2,8 @@
   "name": "youtube-downloader-app",
   "version": "0.1.0",
   "private": true,
-  "main": "dist/electron/main.js",
+  "type": "module",
+  "main": "electron-starter.cjs",
   "scripts": {
     "dev": "concurrently \"yarn:dev:next\" \"yarn:dev:electron\" --kill-others",
     "dev:next": "next dev renderer",
@@ -44,7 +45,8 @@
     "files": [
       "dist/electron/**/*",
       "dist/renderer/**/*",
-      "package.json"
+      "package.json",
+      "electron-starter.cjs"
     ],
     "directories": {
       "output": "release"
