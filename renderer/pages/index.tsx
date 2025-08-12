@@ -1,5 +1,6 @@
 // React의 상태 관리(useState)와 생명주기 관리(useEffect)를 위한 훅(hook)들을 가져옵니다.
 import { useState, useEffect } from 'react';
+import type { VideoFormat, VideoInfo, DownloadHistoryItem } from '../types/electron';
 
 // --- 다운로드 항목 개별 컴포넌트 ---
 const DownloadItem = ({
@@ -35,7 +36,9 @@ const DownloadItem = ({
 
   // '폴더 열기' 버튼을 클릭했을 때 실행되는 함수
   const handleShowItem = () => {
-    if (filePath) window.api.showItemInFolder(filePath);
+    if (filePath && window.api?.showItemInFolder) {
+      window.api.showItemInFolder(filePath);
+    }
   };
 
   // 이 컴포넌트가 화면에 어떻게 보일지를 정의하는 JSX 코드입니다.
@@ -84,7 +87,9 @@ const DownloadItem = ({
 const HistoryItem = ({ item }: { item: DownloadHistoryItem }) => {
   // '폴더 열기' 버튼 클릭 시 실행될 함수
   const handleShowItem = () => {
-    window.api.showItemInFolder(item.filePath);
+    if (window.api?.showItemInFolder) {
+      window.api.showItemInFolder(item.filePath);
+    }
   };
 
   // 다운로드된 시간을 사람이 읽기 쉬운 형태로 포맷팅
@@ -126,49 +131,59 @@ export default function Home() {
   // 다운로드가 완료된 파일의 경로를 관리하는 객체. { itag: filePath } 형태입니다.
   const [completedFiles, setCompletedFiles] = useState<Record<string, string>>({});
 
-  // useEffect 훅: 컴포넌트가 처음 렌더링될 때 특정 작업을 수행하게 합니다. (여기서는 백엔드 이벤트 리스너 설정)
-  // 다운로드 진행률 업데이트 리스너 설정
+  // 컴포넌트가 마운트될 때, 백엔드(Main)에서 보내는 이벤트들을 수신 대기하는 리스너를 설정합니다.
   useEffect(() => {
-    // window.api를 통해 백엔드(Main)에서 보내는 'download-progress' 이벤트를 수신 대기합니다.
-    const cleanup = window.api.onDownloadProgress((_, { itag, percent }) => {
-      // 진행률 데이터가 오면, downloadProgress 상태를 업데이트합니다.
-      setDownloadProgress((prev) => ({
-        ...prev,
-        [itag]: percent,
-      }));
-    });
-    // 이 컴포넌트가 사라질 때(unmount) 실행될 클린업 함수입니다.
-    // 리스너를 제거하여 메모리 누수를 방지합니다.
-    return cleanup;
-  }, []);
+    // window.api가 로드되었는지 확인합니다. preload 스크립트가 실패하면 api는 존재하지 않습니다.
+    if (!window.api) {
+      console.error('FATAL: window.api is not defined. Preload script likely failed to load.');
+      return;
+    }
 
-  // 다운로드 완료 리스너 설정
-  useEffect(() => {
-    // 백엔드에서 보내는 'download-complete' 이벤트를 수신 대기합니다.
-    const cleanup = window.api.onDownloadComplete((_, { itag, filePath }) => {
-      // 완료 데이터가 오면, completedFiles 상태를 업데이트합니다.
+    // 다운로드 진행률 업데이트를 수신합니다.
+    const cleanupProgress = window.api.onDownloadProgress((_, { itag, percent }) => {
+      setDownloadProgress((prev) => ({ ...prev, [itag]: percent }));
+    });
+
+    // 다운로드 완료를 수신합니다.
+    const cleanupComplete = window.api.onDownloadComplete((_, { itag, filePath }) => {
+      // 완료 시 진행률을 100%로 확실히 설정하고, 완료 파일 목록에 추가합니다.
+      setDownloadProgress((prev) => ({ ...prev, [itag]: 100 }));
       setCompletedFiles((prev) => ({ ...prev, [itag]: filePath }));
     });
-    return cleanup;
-  }, []);
 
-  // 다운로드 오류 리스너 설정
-  useEffect(() => {
-    const cleanup = window.api.onDownloadError((_, { itag, error }) => {
-      // 오류 데이터가 오면, downloadErrors 상태를 업데이트합니다.
+    // 다운로드 오류를 수신합니다.
+    const cleanupError = window.api.onDownloadError((_, { itag, error }) => {
       setDownloadErrors((prev) => ({ ...prev, [itag]: error }));
-      // 진행률을 undefined로 설정하여 프로그레스 바를 숨깁니다.
-      setDownloadProgress((prev) => ({ ...prev, [itag]: undefined }));
+      // 오류 발생 시 진행률을 초기화하여 프로그레스 바를 숨깁니다.
+      setDownloadProgress((prev) => {
+        const newProgress = { ...prev };
+        delete newProgress[itag];
+        return newProgress;
+      });
     });
-    return cleanup;
-  }, []);
+
+    // 컴포넌트가 언마운트될 때, 등록했던 모든 리스너를 정리(제거)합니다.
+    // 이렇게 하지 않으면 메모리 누수가 발생할 수 있습니다.
+    return () => {
+      cleanupProgress();
+      cleanupComplete();
+      cleanupError();
+    };
+  }, []); // 빈 배열을 전달하여 이 useEffect가 컴포넌트 마운트 시 한 번만 실행되도록 합니다.
 
   // '정보 가져오기' 버튼을 클릭했을 때 실행되는 비동기 함수입니다.
   const handleFetchInfo = async () => {
+    // API가 준비되었는지 확인합니다.
+    if (!window.api?.getVideoInfo) {
+      setError('API가 준비되지 않았습니다. 앱을 다시 시작해주세요.');
+      return;
+    }
+
     if (!url) {
       setError('유튜브 비디오 URL을 입력해주세요.');
       return;
     }
+
     // 로딩 시작 전에 관련 상태들을 초기화합니다.
     setLoading(true);
     setError('');
@@ -177,35 +192,56 @@ export default function Home() {
     setDownloadErrors({});
     setCompletedFiles({});
 
-    console.log(`[Home] handleFetchInfo start : ${url}`);
-    // window.api를 통해 백엔드에 비디오 정보 요청을 보냅니다.
-    const info: VideoInfo = await window.api.getVideoInfo(url);
-    console.log(`[Home] handleFetchInfo end : ${JSON.stringify(info)}`);
+    try {
+      console.log(`[Home] handleFetchInfo start : ${url}`);
+      // window.api를 통해 백엔드에 비디오 정보 요청을 보냅니다.
+      const info: VideoInfo = await window.api.getVideoInfo(url);
+      console.log(`[Home] handleFetchInfo end : ${JSON.stringify(info)}`);
 
-    // 백엔드로부터 받은 응답을 처리합니다.
-    if (info.error) {
-      console.error(`[Home] handleFetchInfo error: ${info.error}`);
-      setError(info.error);
-    } else {
-      setVideoInfo(info);
+      // 백엔드로부터 받은 응답을 처리합니다.
+      if (info.error) {
+        console.error(`[Home] handleFetchInfo error: ${info.error}`);
+        setError(info.error);
+      } else {
+        setVideoInfo(info);
+      }
+    } catch (error) {
+      console.error('Failed to fetch video info:', error);
+      setError('비디오 정보를 가져오는 중 오류가 발생했습니다.');
     }
+
     // 로딩 상태를 종료합니다.
     setLoading(false);
   };
 
   // 각 다운로드 항목의 '다운로드' 버튼을 클릭했을 때 실행되는 함수입니다.
   const handleDownload = async (format: VideoFormat) => {
+    if (!window.api?.downloadVideo) {
+      console.error('API가 준비되지 않았습니다.');
+      return;
+    }
+
     if (!videoInfo) return;
-    // 다운로드를 시작하기 전에 해당 항목의 진행률과 오류 상태를 초기화합니다.
-    setDownloadProgress((prev) => ({ ...prev, [format.itag]: 0 }));
-    setDownloadErrors((prev) => ({ ...prev, [format.itag]: undefined })); // 이전 오류 초기화
-    // window.api를 통해 백엔드에 실제 다운로드를 요청합니다.
-    await window.api.downloadVideo({
-      url,
-      formatCode: format.itag,
-      type: format.type,
-      title: videoInfo.title,
-    });
+
+    try {
+      // 다운로드를 시작하기 전에 해당 항목의 진행률과 오류 상태를 초기화합니다.
+      setDownloadProgress((prev) => ({ ...prev, [format.itag]: 0 }));
+      setDownloadErrors((prev) => ({ ...prev, [format.itag]: undefined })); // 이전 오류 초기화
+
+      // window.api를 통해 백엔드에 실제 다운로드를 요청합니다.
+      await window.api.downloadVideo({
+        url,
+        formatCode: format.itag,
+        type: format.type,
+        title: videoInfo.title,
+      });
+    } catch (error) {
+      console.error('Failed to start download:', error);
+      setDownloadErrors((prev) => ({
+        ...prev,
+        [format.itag]: '다운로드 시작 중 오류가 발생했습니다.',
+      }));
+    }
   };
 
   // 페이지의 전체 UI 구조입니다.
@@ -213,7 +249,7 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center bg-gray-900 text-white p-8 md:p-12">
       <div className="w-full max-w-4xl text-center">
         <h1 className="text-4xl md:text-5xl font-bold mb-4">YouTube 비디오 다운로더</h1>
-        {/*<p className="text-md md:text-lg text-gray-400 mb-8">ssyoutube.online 클론 앱</p>*/}
+
         <div className="flex gap-2">
           <input
             type="text"
@@ -225,7 +261,7 @@ export default function Home() {
           <button
             onClick={handleFetchInfo}
             disabled={loading}
-            className="bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-6 md:px-8 rounded-lg transition-colors disabled:bg-gray-500"
+            className="bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-6 md:px-8 rounded-lg transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed"
           >
             {loading ? '로딩중...' : '정보 가져오기'}
           </button>

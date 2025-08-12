@@ -1,0 +1,22 @@
+{
+  // extends를 제거하여 독립적인 설정 파일로 만듭니다.
+  // 이렇게 하면 기본 tsconfig.json의 exclude나 moduleResolution 설정과 충돌하지 않습니다.
+  "compilerOptions": {
+    "target": "es2020",
+    // 이 파일의 목적: preload.ts를 CommonJS 방식으로 컴파일합니다.
+    "module": "CommonJS",
+    // CommonJS 모듈 시스템에 맞는 모듈 해석 방식을 사용합니다.
+    "moduleResolution": "Node",
+    "lib": ["es2020", "dom"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    // 컴파일된 결과물이 메인 프로세스 파일과 같은 위치에 있도록 outDir을 명시합니다.
+    "outDir": "../dist/electron",
+    "rootDir": ".",
+    "resolveJsonModule": true,
+    "sourceMap": true
+  },
+  "include": ["preload.ts"]
+}

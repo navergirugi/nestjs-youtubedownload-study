@@ -31,7 +31,10 @@ type YtDlpWrapInstance = InstanceType<YtDlpWrapConstructor>;
 // ESM 프로젝트에서 CJS 모듈(yt-dlp-wrap)을 안정적으로 불러오기 위해 require를 생성합니다.
 const require = createRequire(import.meta.url);
 // 2. 값(Value) 가져오기: `require`를 사용하여 실제 클래스 생성자(값)를 불러온 뒤, 위에서 정의한 타입으로 지정해줍니다.
-const YtDlpWrap = require('yt-dlp-wrap') as YtDlpWrapConstructor;
+const YtDlpWrapModule = require('yt-dlp-wrap');
+// CJS 모듈을 ESM에서 불러올 때, `module.exports`가 `.default` 프로퍼티로 래핑되는 경우가 있습니다.
+// 런타임 시점에 `.default`가 있는지 확인하고, 없으면 모듈 자체를 사용합니다.
+const YtDlpWrap = (YtDlpWrapModule.default || YtDlpWrapModule) as YtDlpWrapConstructor;
 
 // ESM 환경에서는 __dirname, __filename 변수가 없으므로, import.meta.url을 사용하여 직접 정의합니다.
 const __filename = fileURLToPath(import.meta.url);
@@ -99,13 +102,14 @@ const ytDlpPath = path.join(binariesPath, ytDlpFilename);
 // 앱의 메인 윈도우(창)를 생성하는 함수입니다.
 function createWindow() {
   // 브라우저 창을 생성합니다.
+  const preloadScriptPath = path.join(__dirname, 'preload.js');
   const win = new BrowserWindow({
     width: 1000,
     height: 700,
     webPreferences: {
       // preload 스크립트의 경로를 지정합니다. 이 스크립트는 UI(Renderer) 코드가 실행되기 전에 먼저 실행됩니다.
       // __dirname은 현재 파일(main.js)이 위치한 디렉토리 경로입니다. (app/ ...)
-      preload: path.join(__dirname, 'preload.js'),
+      preload: preloadScriptPath,
       // 보안 강화를 위해 contextIsolation을 활성화합니다.
       // 이 옵션은 preload 스크립트와 UI의 JavaScript 컨텍스트를 분리하여, UI에서 직접적으로 Node.js API에 접근하는 것을 막습니다.
       contextIsolation: true,
@@ -113,6 +117,9 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+
+  // [디버깅] preload 스크립트의 절대 경로를 터미널에 출력합니다.
+  console.log('[Main Process] Preload script path:', preloadScriptPath);
 
   // 개발 환경에서는 Next.js 개발 서버를 로드하고,
   // 프로덕션 환경에서는 빌드된 Next.js 앱을 로드합니다.
@@ -140,10 +147,16 @@ app.whenReady().then(async () => {
       },
     });
 
-    console.log('[Main Process] Checking and downloading yt-dlp binary...');
-    // 앱이 UI를 띄우기 전에, yt-dlp 실행 파일이 다운로드되었는지 확인하고 없으면 다운로드합니다.
-    // 파일이 이미 존재하면 중복으로 다운로드하지 않으므로 효율적입니다.
-    await YtDlpWrap.downloadFromGithub(ytDlpPath);
+    // yt-dlp 실행 파일이 이미 있는지 먼저 확인합니다.
+    if (fs.existsSync(ytDlpPath)) {
+      console.log('[Main Process] yt-dlp binary already exists. Skipping download check.');
+    } else {
+      // 파일이 없을 경우에만 GitHub에서 다운로드를 시도합니다.
+      // 이 방법은 매번 앱을 시작할 때마다 GitHub API를 호출하는 것을 방지하여,
+      // API 속도 제한(rate limiting)이나 네트워크 문제로 인한 오류를 크게 줄여줍니다.
+      console.log('[Main Process] yt-dlp binary not found. Downloading from GitHub...');
+      await YtDlpWrap.downloadFromGithub(ytDlpPath);
+    }
     console.log('[Main Process] yt-dlp binary is ready.');
 
     // --- YtDlpWrap 인스턴스 생성 ---

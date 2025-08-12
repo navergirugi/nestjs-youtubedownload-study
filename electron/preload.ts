@@ -1,74 +1,55 @@
-// contextBridge: 안전하게 Main 프로세스와 Renderer 프로세스 간에 통신할 수 있는 API를 노출시키는 모듈
-// ipcRenderer: Renderer 프로세스에서 Main 프로세스로 비동기 메시지를 보내는 모듈
-import { contextBridge, ipcRenderer } from 'electron';
-import IpcRendererEvent = Electron.IpcRendererEvent;
+// 이 파일은 Electron의 메인 프로세스와 렌더러 프로세스(UI) 사이의 안전한 "다리" 역할을 합니다.
+// contextBridge를 사용하여, 메인 프로세스의 특정 기능들을 렌더러의 `window` 객체에 안전하게 노출시킵니다.
 
-// UI(Renderer)에서 호출할 수 있는 함수들을 정의합니다.
-// 이 객체에 정의된 함수들만 UI의 window.api를 통해 접근할 수 있습니다.
-const api = {
-  // Main 프로세스에 비디오 정보 요청
-  // UI에서 window.api.getVideoInfo(url)을 호출하면,
-  // ipcRenderer.invoke를 통해 Main 프로세스의 'get-video-info' 핸들러에게 url을 전달하고, 그 결과를 Promise로 반환받습니다.
-  getVideoInfo: (url: string) => ipcRenderer.invoke('get-video-info', url),
+const { contextBridge, ipcRenderer } = require('electron');
+import type { IpcRendererEvent } from 'electron';
 
-  // Main 프로세스에 다운로드 요청
-  // UI에서 window.api.downloadVideo(options)를 호출하면,
-  // ipcRenderer.invoke를 통해 Main 프로세스의 'download-video' 핸들러에게 options 객체를 전달합니다.
-  downloadVideo: (options: {
-    url: string;
-    formatCode: string;
-    type: 'mp4' | 'mp3';
-    title: string;
-  }) => ipcRenderer.invoke('download-video', options),
-
-  // --- 신규 API 함수들 ---
-  // 기본 다운로드 경로 가져오기
-  getDownloadPath: () => ipcRenderer.invoke('get-download-path'),
-  // 기본 다운로드 경로 설정하기
-  setDownloadPath: () => ipcRenderer.invoke('set-download-path'),
-  // 다운로드 기록 가져오기
-  getDownloadHistory: () => ipcRenderer.invoke('get-download-history'),
-  // 다운로드 기록 삭제하기
-  clearDownloadHistory: () => ipcRenderer.invoke('clear-download-history'),
-  onDownloadComplete: (
-    callback: (event: IpcRendererEvent, data: { itag: string; filePath: string }) => void,
-  ) => {
-    ipcRenderer.on('download-complete', callback);
-    return () => {
-      ipcRenderer.removeListener('download-complete', callback);
-    };
-  },
-  // 파일이 있는 폴더 열기
-  showItemInFolder: (filePath: string) => ipcRenderer.invoke('show-item-in-folder', filePath),
-
-  // Main 프로세스로부터 오는 다운로드 진행률 수신
-  // 이 함수는 UI에서 콜백 함수를 등록하는 데 사용됩니다.
-  onDownloadProgress: (
-    callback: (event: IpcRendererEvent, data: { itag: string; percent: number }) => void,
-  ) => {
-    // Main 프로세스가 'download-progress' 채널로 데이터를 보낼 때마다 등록된 콜백 함수가 실행됩니다.
-    ipcRenderer.on('download-progress', callback);
-    // 클린업(정리) 함수를 반환합니다.
-    // React 컴포넌트가 언마운트될 때 이 함수를 호출하여, 불필요한 메모리 누수를 방지하기 위해 리스너를 제거합니다.
-    return () => {
-      ipcRenderer.removeListener('download-progress', callback);
-    };
-  },
-
-  // Main 프로세스로부터 오는 다운로드 오류 수신
-  onDownloadError: (
-    callback: (event: IpcRendererEvent, data: { itag: string; error: string }) => void,
-  ) => {
-    // Main 프로세스가 'download-error' 채널로 데이터를 보낼 때마다 등록된 콜백 함수가 실행됩니다.
-    ipcRenderer.on('download-error', callback);
-    // 마찬가지로, 리스너를 정리하는 클린업 함수를 반환합니다.
-    return () => {
-      ipcRenderer.removeListener('download-error', callback);
-    };
-  },
+// 렌더러와 주고받을 데이터 타입을 명시하여 코드 안정성을 높입니다.
+type DownloadRequest = {
+  url: string;
+  formatCode: string;
+  type: 'mp4' | 'mp3';
+  title: string;
 };
 
-// `contextBridge.exposeInMainWorld`를 사용하여 위에서 정의한 `api` 객체를
-// UI의 `window` 객체에 `api`라는 이름으로 안전하게 노출시킵니다.
-// 이렇게 하면 UI에서는 `window.api.getVideoInfo(...)` 와 같은 방식으로 백엔드 기능을 호출할 수 있습니다.
+type ProgressData = { itag: string; percent: number };
+type CompleteData = { itag: string; filePath: string };
+type ErrorData = { itag: string; error: string };
+
+// 콜백 함수 타입들 정의
+type DownloadProgressCallback = (event: IpcRendererEvent, data: ProgressData) => void;
+type DownloadCompleteCallback = (event: IpcRendererEvent, data: CompleteData) => void;
+type DownloadErrorCallback = (event: IpcRendererEvent, data: ErrorData) => void;
+
+// 렌더러에 노출할 API 객체입니다.
+const api = {
+  // Main -> Renderer (Listeners)
+  // 메인 프로세스에서 보내는 이벤트를 수신 대기합니다.
+  // React의 useEffect 훅에서 사용하기 좋도록, 리스너를 제거하는 cleanup 함수를 반환합니다.
+  onDownloadProgress: (callback: DownloadProgressCallback) => {
+    ipcRenderer.on('download-progress', callback);
+    return () => ipcRenderer.removeListener('download-progress', callback);
+  },
+  onDownloadComplete: (callback: DownloadCompleteCallback) => {
+    ipcRenderer.on('download-complete', callback);
+    return () => ipcRenderer.removeListener('download-complete', callback);
+  },
+  onDownloadError: (callback: DownloadErrorCallback) => {
+    ipcRenderer.on('download-error', callback);
+    return () => ipcRenderer.removeListener('download-error', callback);
+  },
+
+  // Renderer -> Main (Invokers)
+  // 렌더러에서 메인 프로세스의 기능을 호출하고 결과를 비동기적으로 받습니다.
+  getVideoInfo: (url: string) => ipcRenderer.invoke('get-video-info', url),
+  downloadVideo: (options: DownloadRequest) => ipcRenderer.invoke('download-video', options),
+  showItemInFolder: (filePath: string) => ipcRenderer.invoke('show-item-in-folder', filePath),
+  setDownloadPath: () => ipcRenderer.invoke('set-download-path'),
+  getDownloadPath: () => ipcRenderer.invoke('get-download-path'),
+  getDownloadHistory: () => ipcRenderer.invoke('get-download-history'),
+  clearDownloadHistory: () => ipcRenderer.invoke('clear-download-history'),
+};
+
+// `contextBridge`를 사용하여 위에서 정의한 `api` 객체를 `window.api`라는 이름으로 렌더러에 안전하게 노출합니다.
+// 중요: 한 번만 호출해야 합니다!
 contextBridge.exposeInMainWorld('api', api);

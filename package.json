@@ -10,7 +10,8 @@
     "dev:electron": "wait-on http://localhost:3000 && yarn build:electron && electron .",
     "build": "yarn build:electron && yarn build:next",
     "build:next": "next build renderer",
-    "build:electron": "tsc -p ./electron/tsconfig.json",
+    "build:electron__": "tsc -p ./electron/tsconfig.json",
+    "build:electron": "tsc -p ./electron/tsconfig.json && tsc -p ./electron/tsconfig.preload.json",
     "dist": "yarn build && next export renderer -o dist/renderer && electron-builder",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "format": "prettier --write ."
