@@ -3,10 +3,11 @@
 // 이 CJS 파일이 진입점(entry point) 역할을 하여 실제 ESM 코드를 불러옵니다.
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 // ==================[ 시동 과정 블랙박스 ]==================
 // 이 로그는 앱의 메인 코드가 실행되기도 전에 기록되므로, 시동 실패의 원인을 찾는 데 결정적입니다.
-const starterLogPath = path.join('/tmp', 'ydownload_starter.log');
+const starterLogPath = path.join(os.tmpdir(), 'ydownload_starter.log');
 function writeStarterLog(message) {
   const timestamp = new Date().toISOString();
   const logMessage = `[${timestamp}] ${message}\n`;
