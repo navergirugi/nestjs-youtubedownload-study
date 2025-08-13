@@ -17,6 +17,21 @@ import { YTDlpFormat, YTDlpMetadata } from './yt-dlp-types.js';
 // Node.js의 내장 모듈로, 파일 시스템과 상호작용(파일 읽기, 쓰기 등)하는 기능을 제공합니다.
 import * as fs from 'fs';
 
+// 로그 파일 설정
+// [디버깅] 문제가 해결될 때까지, 어떤 환경에서든 위치가 명확한 /tmp 폴더에 로그를 남깁니다.
+const logPath = path.join('/tmp', 'ydownload.log');
+function writeLog(message: string) {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] ${message}\n`;
+  console.log(logMessage.trim());
+  try {
+    fs.appendFileSync(logPath, logMessage);
+  } catch (error) {
+    console.error('Failed to write log:', error);
+  }
+}
+writeLog('=== App Starting ===');
+
 // --- CJS 모듈(yt-dlp-wrap) 호환성 처리 ---
 // `yt-dlp-wrap`은 구형 CommonJS(CJS) 모듈이므로, 최신 ESM 프로젝트에서 사용하려면 특별한 처리가 필요합니다.
 
@@ -39,6 +54,9 @@ const YtDlpWrap = (YtDlpWrapModule.default || YtDlpWrapModule) as YtDlpWrapConst
 // ESM 환경에서는 __dirname, __filename 변수가 없으므로, import.meta.url을 사용하여 직접 정의합니다.
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+writeLog(`__dirname: ${__dirname}`);
+writeLog(`isDev: ${isDev}`);
 
 // --- 앱 설정을 위한 스키마 정의 ---
 // electron-store에 저장될 데이터의 구조와 타입을 명확하게 정의합니다.
@@ -103,10 +121,12 @@ const ytDlpPath = path.join(binariesPath, ytDlpFilename);
 function createWindow() {
   // 브라우저 창을 생성합니다.
   const preloadScriptPath = path.join(__dirname, 'preload.js');
+
   const win = new BrowserWindow({
     width: 1000,
     height: 700,
-    show: true, // [디버깅] 문제가 해결될 때까지 창을 즉시 표시하도록 이 줄을 주석 처리합니다.
+    // [디버깅] 문제가 해결될 때까지 창을 즉시 표시하도록 'show: false'와 'ready-to-show'를 주석 처리합니다.
+    // show: false,
     webPreferences: {
       // preload 스크립트의 경로를 지정합니다. 이 스크립트는 UI(Renderer) 코드가 실행되기 전에 먼저 실행됩니다.
       // __dirname은 현재 파일(main.js)이 위치한 디렉토리 경로입니다. (app/ ...)
@@ -119,29 +139,54 @@ function createWindow() {
     },
   });
 
-  // [디버깅] preload 스크립트의 절대 경로를 터미널에 출력합니다.
-  console.log('[Main Process] Preload script path:', preloadScriptPath);
+  // 'ready-to-show' 이벤트는 렌더러 프로세스가 페이지 렌더링을 완료했을 때 발생합니다.
+  // 웹 콘텐츠 이벤트 리스너들
+  win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    writeLog(`Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`);
+  });
+
+  win.webContents.on('did-finish-load', () => {
+    writeLog('Page finished loading');
+  });
+
+  win.webContents.on('crashed', () => {
+    writeLog('Renderer process crashed');
+  });
+
+  win.webContents.on('preload-error', (event, preloadPath, error) => {
+    writeLog(`Preload error: ${preloadPath} - ${error.message}`);
+  });
 
   // 개발 환경에서는 Next.js 개발 서버를 로드하고,
   // 프로덕션 환경에서는 빌드된 Next.js 앱을 로드합니다.
   if (isDev) {
+    writeLog('Development mode: loading localhost:3000');
     // 개발 중일 때는 http://localhost:3000 주소로 실행되는 Next.js 개발 서버를 로드합니다.
     win.loadURL('http://localhost:3000');
     // 개발자 도구(F12)를 자동으로 엽니다.
     win.webContents.openDevTools();
   } else {
-    // 앱이 빌드(배포)되었을 때는, 생성된 HTML 파일을 직접 로드합니다.
-    // __dirname은 현재 실행중인 main.js 파일이 있는 디렉토리입니다. (dist/electron)
-    // 빌드된 Next.js 파일은 dist/renderer 폴더에 위치합니다.
-    // 따라서, main.js에서 한 단계 위로 올라가 renderer 폴더를 찾으면 됩니다.
-    win.loadFile(path.join(__dirname, '../renderer/index.html'));
+    // 빌드된 앱에서는 `app.asar` 아카이브 내부에 있는 `index.html`을 로드해야 합니다.
+    // `app.getAppPath()`는 `app.asar` 파일의 경로를 반환하므로, 이를 기준으로 경로를 구성합니다.
+    const htmlPath = path.join(app.getAppPath(), 'dist/renderer/index.html');
+    writeLog(`Production mode: loading HTML from ${htmlPath}`);
+    writeLog(`HTML file exists: ${fs.existsSync(htmlPath)}`);
+    win.loadFile(htmlPath).catch((error) => {
+      writeLog(`Failed to load file: ${error.message}`);
+      // 로드 실패 시 사용자에게 알림
+      dialog.showErrorBox(
+        '페이지 로드 실패',
+        `앱 화면을 불러오는 데 실패했습니다.\n오류: ${error.message}`,
+      );
+    });
     // [디버깅] 빌드된 앱에서도 개발자 도구를 강제로 열어, 렌더러 프로세스의 오류를 확인합니다.
-    win.webContents.openDevTools();
+    // win.webContents.openDevTools({ mode: 'detach' });
   }
 }
 
 // Electron 앱이 준비되면 (초기화 완료) 이 함수를 실행합니다.
 app.whenReady().then(async () => {
+  writeLog('App is ready');
   try {
     // --- Store 초기화 ---
     // 프로젝트가 ESM으로 전환되었으므로, 파일 상단에서 직접 import한 클래스를 사용합니다.
@@ -155,15 +200,15 @@ app.whenReady().then(async () => {
 
     // yt-dlp 실행 파일이 이미 있는지 먼저 확인합니다.
     if (fs.existsSync(ytDlpPath)) {
-      console.log('[Main Process] yt-dlp binary already exists. Skipping download check.');
+      writeLog('yt-dlp binary already exists. Skipping download check.');
     } else {
       // 파일이 없을 경우에만 GitHub에서 다운로드를 시도합니다.
       // 이 방법은 매번 앱을 시작할 때마다 GitHub API를 호출하는 것을 방지하여,
       // API 속도 제한(rate limiting)이나 네트워크 문제로 인한 오류를 크게 줄여줍니다.
-      console.log('[Main Process] yt-dlp binary not found. Downloading from GitHub...');
+      writeLog('yt-dlp binary not found. Downloading from GitHub...');
       await YtDlpWrap.downloadFromGithub(ytDlpPath);
     }
-    console.log('[Main Process] yt-dlp binary is ready.');
+    writeLog('yt-dlp binary is ready.');
 
     // --- YtDlpWrap 인스턴스 생성 ---
     ytDlpWrap = new YtDlpWrap();
@@ -172,12 +217,13 @@ app.whenReady().then(async () => {
     // 모든 준비가 끝나면 메인 윈도우를 생성합니다.
     createWindow();
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    writeLog(`Failed to initialize the application: ${errorMsg}`);
     console.error('[Main Process] Failed to initialize the application:', error);
     // 앱 초기화 중 어떤 단계에서든 오류가 발생하면 사용자에게 알립니다.
     dialog.showErrorBox(
       'Critical Error',
-      'Failed to initialize the application. Please check your internet connection and restart.\n\n' +
-        (error instanceof Error ? error.message : String(error)),
+      `Failed to initialize the application. Please check your internet connection and restart.\n\nLog file: ${logPath}\n\n${errorMsg}`,
     );
     // 앱을 종료합니다.
     app.quit();
@@ -186,6 +232,7 @@ app.whenReady().then(async () => {
 
 // 모든 창이 닫혔을 때 앱을 종료하는 리스너입니다.
 app.on('window-all-closed', () => {
+  writeLog('All windows closed');
   // macOS에서는 모든 창이 닫혀도 앱이 Dock에 남아있는 것이 일반적이므로, macOS가 아닐 경우에만 앱을 종료합니다.
   if (process.platform !== 'darwin') {
     app.quit();
@@ -194,6 +241,7 @@ app.on('window-all-closed', () => {
 
 // macOS에서 Dock 아이콘을 클릭했을 때 창을 다시 여는 리스너입니다.
 app.on('activate', () => {
+  writeLog('App activated');
   // 열려있는 창이 하나도 없을 경우에만 새 창을 생성합니다.
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
@@ -319,7 +367,7 @@ function processAudioFormats(formats: YTDlpFormat[]): ProcessedFormat[] {
 // 비디오 정보 요청 처리
 // ipcMain.handle은 UI(Renderer)에서 보낸 'get-video-info' 요청을 비동기적으로 처리합니다.
 ipcMain.handle('get-video-info', async (event, url) => {
-  console.log(`[Main Process] 비디오 정보 요청 받음: ${url}`);
+  writeLog(`비디오 정보 요청 받음: ${url}`);
   try {
     // yt-dlp를 이용해 해당 URL의 메타데이터(제목, 썸네일, 포맷 목록 등)를 가져옵니다.
     const metadata: YTDlpMetadata = await ytDlpWrap.getVideoInfo(url);
@@ -341,14 +389,12 @@ ipcMain.handle('get-video-info', async (event, url) => {
       thumbnail: metadata.thumbnail,
       formats: [...videoFormats, ...audioFormats],
     };
-    console.log(`[Main Process] 정보 가져오기 성공. 제목: ${result.title}`);
+    writeLog(`정보 가져오기 성공. 제목: ${result.title}`);
     // 성공 결과를 UI로 반환합니다.
     return result;
   } catch (error) {
-    console.error('[Main Process] 정보 가져오기 중 오류 발생:', error);
-    // 오류가 Error 객체의 인스턴스인지 확인하여 안전하게 message 속성에 접근합니다.
     const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
-
+    writeLog(`정보 가져오기 중 오류 발생: ${errorMessage}`);
     // 오류 발생 시, 오류 정보를 담은 객체를 UI로 반환합니다.
     return { error: errorMessage };
   }
@@ -359,6 +405,7 @@ ipcMain.handle('get-video-info', async (event, url) => {
 ipcMain.handle(
   'download-video',
   async (event, { url, formatCode, type, title }: DownloadRequest) => {
+    writeLog(`다운로드 요청: ${title} - ${formatCode} - ${type}`);
     // 이 요청을 보낸 UI 창(BrowserWindow)을 찾습니다.
     const win = BrowserWindow.fromWebContents(event.sender)!;
     // 파일명으로 사용할 수 없는 문자들을 제거합니다.
@@ -384,6 +431,7 @@ ipcMain.handle(
 
     // 사용자가 파일 경로를 선택했다면 (취소하지 않았다면)
     if (filePath) {
+      writeLog(`다운로드 시작: ${filePath}`);
       // yt-dlp에 전달할 인자(argument) 배열을 구성합니다.
       const args = [
         url,
@@ -394,7 +442,7 @@ ipcMain.handle(
         '-o', // 출력 파일 경로를 지정하는 옵션
         filePath,
       ];
-      console.log(`[Main Process] yt-dlp 실행: ${args.join(' ')}`);
+      writeLog(`yt-dlp 실행: ${args.join(' ')}`);
       // 구성된 인자들로 yt-dlp를 실행합니다.
       ytDlpWrap
         .exec(args)
@@ -408,9 +456,9 @@ ipcMain.handle(
         })
         // 'error' 이벤트 리스너: 다운로드 중 오류가 발생하면 호출됩니다.
         .on('error', (error: unknown) => {
-          console.error('[Main Process] 다운로드 오류:', error);
           const errorMessage =
             error instanceof Error ? error.message : 'An unknown download error occurred.';
+          writeLog(`다운로드 오류: ${errorMessage}`);
           // 'download-error' 채널로 UI에 오류 정보를 보냅니다.
           win.webContents.send('download-error', {
             itag: formatCode,
@@ -419,7 +467,7 @@ ipcMain.handle(
         })
         // 'close' 이벤트 리스너: 다운로드가 성공적으로 완료되면 호출됩니다.
         .on('close', () => {
-          console.log(`[Main Process] 다운로드 완료: ${filePath}`);
+          writeLog(`다운로드 완료: ${filePath}`);
           // 다운로드가 100% 완료되었음을 'download-progress'로 알리고, 별도로 'download-complete' 이벤트도 보냅니다.
           win.webContents.send('download-complete', { itag: formatCode, filePath: filePath });
 
@@ -432,6 +480,8 @@ ipcMain.handle(
             downloadedAt: new Date().toISOString(),
           });
         });
+    } else {
+      writeLog('다운로드 취소됨 - 파일 경로 선택 안함');
     }
   },
 );

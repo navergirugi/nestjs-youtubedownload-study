@@ -9,7 +9,7 @@
     "dev:next": "next dev renderer",
     "dev:electron": "wait-on http://localhost:3000 && yarn build:electron && electron .",
     "build": "yarn build:electron && yarn build:next",
-    "build:next": "next build renderer",
+    "build:next": "next build renderer ",
     "build:electron": "tsc -p ./electron/tsconfig.json && tsc -p ./electron/tsconfig.preload.json",
     "build:win": "yarn build && electron-builder --win",
     "build:mac": "yarn build && electron-builder --mac",
@@ -42,12 +42,18 @@
     "wait-on": "^7.0.1"
   },
   "build": {
-    "appId": "com.ssyoutube.clone",
-    "productName": "SSYouTube Downloader",
+    "appId": "com.smith",
+    "productName": "SM YouTube Downloader",
     "files": [
       "dist/**/*",
       "package.json",
       "electron-starter.cjs"
+    ],
+    "asarUnpack": [
+      "dist/electron/**/*",
+      "**/node_modules/yt-dlp-wrap/**/*",
+      "**/node_modules/electron-store/**/*",
+      "**/node_modules/electron-is-dev/**/*"
     ],
     "directories": {
       "output": "release"
