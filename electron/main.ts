@@ -106,6 +106,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1000,
     height: 700,
+    show: true, // [디버깅] 문제가 해결될 때까지 창을 즉시 표시하도록 이 줄을 주석 처리합니다.
     webPreferences: {
       // preload 스크립트의 경로를 지정합니다. 이 스크립트는 UI(Renderer) 코드가 실행되기 전에 먼저 실행됩니다.
       // __dirname은 현재 파일(main.js)이 위치한 디렉토리 경로입니다. (app/ ...)
@@ -130,7 +131,12 @@ function createWindow() {
     win.webContents.openDevTools();
   } else {
     // 앱이 빌드(배포)되었을 때는, 생성된 HTML 파일을 직접 로드합니다.
-    win.loadFile(path.join(__dirname, '../dist/renderer/index.html'));
+    // __dirname은 현재 실행중인 main.js 파일이 있는 디렉토리입니다. (dist/electron)
+    // 빌드된 Next.js 파일은 dist/renderer 폴더에 위치합니다.
+    // 따라서, main.js에서 한 단계 위로 올라가 renderer 폴더를 찾으면 됩니다.
+    win.loadFile(path.join(__dirname, '../renderer/index.html'));
+    // [디버깅] 빌드된 앱에서도 개발자 도구를 강제로 열어, 렌더러 프로세스의 오류를 확인합니다.
+    win.webContents.openDevTools();
   }
 }
 

@@ -131,59 +131,116 @@ export default function Home() {
   // 다운로드가 완료된 파일의 경로를 관리하는 객체. { itag: filePath } 형태입니다.
   const [completedFiles, setCompletedFiles] = useState<Record<string, string>>({});
 
-  // 컴포넌트가 마운트될 때, 백엔드(Main)에서 보내는 이벤트들을 수신 대기하는 리스너를 설정합니다.
+  // API 준비 상태를 추적
+  const [apiReady, setApiReady] = useState(false);
+
+  // API 초기화 및 리스너 설정을 위한 통합 useEffect
   useEffect(() => {
-    // window.api가 로드되었는지 확인합니다. preload 스크립트가 실패하면 api는 존재하지 않습니다.
-    if (!window.api) {
-      console.error('FATAL: window.api is not defined. Preload script likely failed to load.');
-      return;
-    }
-
-    // 다운로드 진행률 업데이트를 수신합니다.
-    const cleanupProgress = window.api.onDownloadProgress((_, { itag, percent }) => {
-      setDownloadProgress((prev) => ({ ...prev, [itag]: percent }));
-    });
-
-    // 다운로드 완료를 수신합니다.
-    const cleanupComplete = window.api.onDownloadComplete((_, { itag, filePath }) => {
-      // 완료 시 진행률을 100%로 확실히 설정하고, 완료 파일 목록에 추가합니다.
-      setDownloadProgress((prev) => ({ ...prev, [itag]: 100 }));
-      setCompletedFiles((prev) => ({ ...prev, [itag]: filePath }));
-    });
-
-    // 다운로드 오류를 수신합니다.
-    const cleanupError = window.api.onDownloadError((_, { itag, error }) => {
-      setDownloadErrors((prev) => ({ ...prev, [itag]: error }));
-      // 오류 발생 시 진행률을 초기화하여 프로그레스 바를 숨깁니다.
-      setDownloadProgress((prev) => {
-        const newProgress = { ...prev };
-        delete newProgress[itag];
-        return newProgress;
-      });
-    });
-
-    // 컴포넌트가 언마운트될 때, 등록했던 모든 리스너를 정리(제거)합니다.
-    // 이렇게 하지 않으면 메모리 누수가 발생할 수 있습니다.
-    return () => {
-      cleanupProgress();
-      cleanupComplete();
-      cleanupError();
+    console.log('=== 렌더러 디버깅 ===');
+    console.log('window:', !!window);
+    console.log('window.api:', window.api);
+    console.log('window.api type:', typeof window.api);
+    
+    const initializeApi = () => {
+      if (window.api) {
+        console.log('✅ window.api 사용 가능');
+        console.log('API 메서드들:', Object.keys(window.api));
+        
+        // 각 메서드 존재 여부 체크
+        console.log('onDownloadProgress:', !!window.api.onDownloadProgress);
+        console.log('onDownloadComplete:', !!window.api.onDownloadComplete);
+        console.log('onDownloadError:', !!window.api.onDownloadError);
+        console.log('getVideoInfo:', !!window.api.getVideoInfo);
+        console.log('downloadVideo:', !!window.api.downloadVideo);
+        
+        setApiReady(true);
+        return setupListeners();
+      } else {
+        console.error('❌ window.api가 undefined입니다');
+        
+        // 잠시 후 다시 확인 (최대 10초)
+        const maxRetries = 20;
+        let retryCount = 0;
+        
+        const checkAgain = () => {
+          retryCount++;
+          console.log(`다시 확인 중... (${retryCount}/${maxRetries})`);
+          
+          if (window.api) {
+            console.log('✅ 이제 window.api 사용 가능!');
+            setApiReady(true);
+            return setupListeners();
+          } else if (retryCount < maxRetries) {
+            console.log('❌ 여전히 undefined');
+            setTimeout(checkAgain, 500);
+          } else {
+            console.error('❌ API 로딩 타임아웃');
+          }
+        };
+        
+        setTimeout(checkAgain, 100);
+        return () => {}; // 빈 클린업 함수
+      }
     };
-  }, []); // 빈 배열을 전달하여 이 useEffect가 컴포넌트 마운트 시 한 번만 실행되도록 합니다.
+    
+    const setupListeners = () => {
+      if (!window.api) return () => {};
+      
+      const cleanupFunctions: Array<(() => void) | undefined> = [];
+      
+      // 진행률 리스너
+      if (window.api.onDownloadProgress) {
+        const progressCleanup = window.api.onDownloadProgress((_, { itag, percent }) => {
+          console.log(`Progress update: ${itag} - ${percent}%`);
+          setDownloadProgress((prev) => ({
+            ...prev,
+            [itag]: percent,
+          }));
+        });
+        cleanupFunctions.push(progressCleanup);
+      }
+
+      // 완료 리스너 
+      if (window.api.onDownloadComplete) {
+        const completeCleanup = window.api.onDownloadComplete((_, { itag, filePath }) => {
+          console.log(`Download complete: ${itag} - ${filePath}`);
+          setCompletedFiles((prev) => ({ ...prev, [itag]: filePath }));
+        });
+        cleanupFunctions.push(completeCleanup);
+      }
+
+      // 오류 리스너
+      if (window.api.onDownloadError) {
+        const errorCleanup = window.api.onDownloadError((_, { itag, error }) => {
+          console.log(`Download error: ${itag} - ${error}`);
+          setDownloadErrors((prev) => ({ ...prev, [itag]: error }));
+          setDownloadProgress((prev) => ({ ...prev, [itag]: undefined }));
+        });
+        cleanupFunctions.push(errorCleanup);
+      }
+
+      // 통합 클린업 함수 반환
+      return () => {
+        console.log('Cleaning up listeners...');
+        cleanupFunctions.forEach(cleanup => cleanup?.());
+      };
+    };
+    
+    return initializeApi();
+  }, []);
 
   // '정보 가져오기' 버튼을 클릭했을 때 실행되는 비동기 함수입니다.
   const handleFetchInfo = async () => {
-    // API가 준비되었는지 확인합니다.
-    if (!window.api?.getVideoInfo) {
-      setError('API가 준비되지 않았습니다. 앱을 다시 시작해주세요.');
+    if (!apiReady || !window.api?.getVideoInfo) {
+      setError('API가 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요.');
       return;
     }
-
+    
     if (!url) {
       setError('유튜브 비디오 URL을 입력해주세요.');
       return;
     }
-
+    
     // 로딩 시작 전에 관련 상태들을 초기화합니다.
     setLoading(true);
     setError('');
@@ -209,25 +266,25 @@ export default function Home() {
       console.error('Failed to fetch video info:', error);
       setError('비디오 정보를 가져오는 중 오류가 발생했습니다.');
     }
-
+    
     // 로딩 상태를 종료합니다.
     setLoading(false);
   };
 
   // 각 다운로드 항목의 '다운로드' 버튼을 클릭했을 때 실행되는 함수입니다.
   const handleDownload = async (format: VideoFormat) => {
-    if (!window.api?.downloadVideo) {
+    if (!apiReady || !window.api?.downloadVideo) {
       console.error('API가 준비되지 않았습니다.');
       return;
     }
-
+    
     if (!videoInfo) return;
-
+    
     try {
       // 다운로드를 시작하기 전에 해당 항목의 진행률과 오류 상태를 초기화합니다.
       setDownloadProgress((prev) => ({ ...prev, [format.itag]: 0 }));
       setDownloadErrors((prev) => ({ ...prev, [format.itag]: undefined })); // 이전 오류 초기화
-
+      
       // window.api를 통해 백엔드에 실제 다운로드를 요청합니다.
       await window.api.downloadVideo({
         url,
@@ -237,9 +294,9 @@ export default function Home() {
       });
     } catch (error) {
       console.error('Failed to start download:', error);
-      setDownloadErrors((prev) => ({
-        ...prev,
-        [format.itag]: '다운로드 시작 중 오류가 발생했습니다.',
+      setDownloadErrors((prev) => ({ 
+        ...prev, 
+        [format.itag]: '다운로드 시작 중 오류가 발생했습니다.' 
       }));
     }
   };
@@ -249,7 +306,14 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center bg-gray-900 text-white p-8 md:p-12">
       <div className="w-full max-w-4xl text-center">
         <h1 className="text-4xl md:text-5xl font-bold mb-4">YouTube 비디오 다운로더</h1>
-
+        
+        {/* API 준비 상태 표시 */}
+        {!apiReady && (
+          <div className="mb-4 p-3 bg-yellow-600 text-white rounded-lg">
+            API 초기화 중... 잠시만 기다려주세요.
+          </div>
+        )}
+        
         <div className="flex gap-2">
           <input
             type="text"
@@ -260,10 +324,10 @@ export default function Home() {
           />
           <button
             onClick={handleFetchInfo}
-            disabled={loading}
-            className="bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-6 md:px-8 rounded-lg transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed"
+            disabled={loading || !apiReady}
+            className="bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-6 md:px-8 rounded-lg transition-colors disabled:bg-gray-500"
           >
-            {loading ? '로딩중...' : '정보 가져오기'}
+            {loading ? '로딩중...' : !apiReady ? '준비중...' : '정보 가져오기'}
           </button>
         </div>
         {error && <p className="text-red-500 mt-4">{error}</p>}

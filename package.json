@@ -10,9 +10,10 @@
     "dev:electron": "wait-on http://localhost:3000 && yarn build:electron && electron .",
     "build": "yarn build:electron && yarn build:next",
     "build:next": "next build renderer",
-    "build:electron__": "tsc -p ./electron/tsconfig.json",
     "build:electron": "tsc -p ./electron/tsconfig.json && tsc -p ./electron/tsconfig.preload.json",
-    "dist": "yarn build && next export renderer -o dist/renderer && electron-builder",
+    "build:win": "yarn build && electron-builder --win",
+    "build:mac": "yarn build && electron-builder --mac",
+    "dist": "yarn build && electron-builder",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "format": "prettier --write ."
   },
@@ -44,8 +45,7 @@
     "appId": "com.ssyoutube.clone",
     "productName": "SSYouTube Downloader",
     "files": [
-      "dist/electron/**/*",
-      "dist/renderer/**/*",
+      "dist/**/*",
       "package.json",
       "electron-starter.cjs"
     ],
