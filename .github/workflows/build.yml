@@ -20,11 +20,11 @@ jobs:
     steps:
       # 1단계: 저장소의 코드를 가상 머신으로 가져옵니다. (체크아웃)
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # 2단계: Node.js 환경을 설정합니다.
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           # 프로젝트에 맞는 Node.js 버전을 지정합니다. (예: 18.x)
           node-version: '18.x'
@@ -41,7 +41,7 @@ jobs:
 
       # 5단계: 빌드 결과물(설치 파일)을 '아티팩트(Artifact)'로 업로드하여 다운로드할 수 있게 만듭니다.
       - name: Upload Windows Installer
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           # 다운로드 받을 때 표시될 아티팩트의 이름입니다.
           name: windows-installer
