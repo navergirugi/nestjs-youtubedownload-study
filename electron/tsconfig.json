@@ -1,18 +1,19 @@
 {
   "compilerOptions": {
-    "target": "es2020",
+    // package.json의 Node.js v18 버전에 맞는 최신 JavaScript 기능으로 컴파일합니다.
+    "target": "ES2022",
+    // [핵심 수정] Node.js의 최신 모듈 시스템(ESM)을 사용하도록 설정합니다.
+    // 이 설정은 package.json의 "type": "module"과 완벽하게 호환되어,
+    // 'import' 구문을 올바른 ES 모듈로 컴파일합니다.
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["es2020", "dom"],
+    // 컴파일된 JavaScript 파일들을 프로젝트 루트의 'dist/electron' 폴더에 저장합니다.
+    "outDir": "../dist/electron",
+    // 코드 안정성을 위한 표준적인 TypeScript 옵션들입니다.
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "outDir": "../dist/electron",
-    "rootDir": ".",
-    "resolveJsonModule": true,
-    "sourceMap": true
+    "forceConsistentCasingInFileNames": true
   },
-  "include": ["**/*.ts"],
-  "exclude": ["node_modules", "preload.ts"]
+  "include": ["./main.ts", "./yt-dlp-types.ts"]
 }
