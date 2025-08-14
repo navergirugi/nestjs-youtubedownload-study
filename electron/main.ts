@@ -6,6 +6,8 @@
 // shell: 파일 시스템의 파일을 관리하는 데 사용되는 유틸리티 (예: 폴더에서 파일 보기)
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 // 현재 환경이 개발 환경인지 프로덕션(배포) 환경인지 쉽게 확인하게 해주는 유틸리티입니다.
 import isDev from 'electron-is-dev';
 // ESM 모듈인 electron-store와 yt-dlp-wrap을 직접 가져옵니다.
@@ -55,11 +57,13 @@ if (!gotTheLock) {
   // 프로젝트가 안정적인 CommonJS 모듈 시스템으로 컴파일되므로,
   // `import.meta.url` 같은 ESM 전용 기능 대신 `require`와 `__dirname`을 직접 사용합니다.
 
-  // yt-dlp-wrap은 CommonJS 모듈이므로, require를 사용하여 직접 가져옵니다.
-  const YtDlpWrap = require('yt-dlp-wrap');
+  // ESM 환경에서는 __dirname, __filename 변수가 없으므로, import.meta.url을 사용하여 직접 정의합니다.
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
 
-  // 타입 추론을 위해 YtDlpWrap의 인스턴스 타입을 정의합니다.
-  // 이렇게 하면 ytDlpWrap 변수에서 자동완성 기능을 계속 사용할 수 있습니다.
+  // ESM 프로젝트에서 CJS 모듈(yt-dlp-wrap)을 안정적으로 불러오기 위해 require를 생성합니다.
+  const require = createRequire(import.meta.url);
+  const YtDlpWrap = require('yt-dlp-wrap');
   type YtDlpWrapInstance = InstanceType<typeof YtDlpWrap>;
 
   writeLog(`__dirname: ${__dirname}`);
