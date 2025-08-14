@@ -145,5 +145,6 @@ jobs:
           # 다운로드 받을 때 표시될 아티팩트의 이름입니다.
           name: macos-installer
           # 업로드할 파일의 경로입니다. 'release' 폴더 안에 있는 모든 .dmg 파일을 대상으로 합니다.
-          path: release/*.dmg
-                remove_quarantine.sh
+          path: |
+            release/*.dmg
+            remove_quarantine.sh
