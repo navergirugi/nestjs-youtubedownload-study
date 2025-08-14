@@ -14,11 +14,21 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
     "baseUrl": ".",
     "paths": {
       "@/*": ["renderer/*"]
     }
   },
-  "include": ["renderer/next-env.d.ts", "renderer/**/*.ts", "renderer/**/*.tsx"],
+  "include": [
+    "renderer/next-env.d.ts",
+    "renderer/**/*.ts",
+    "renderer/**/*.tsx",
+    "renderer/.next/types/**/*.ts"
+  ],
   "exclude": ["node_modules", "electron", "app"]
 }
