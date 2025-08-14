@@ -99,7 +99,7 @@ jobs:
       # 6단계: macOS용 애플리케이션을 패키징합니다.
       - name: Package macOS App
 #        run: yarn electron-builder --mac
-        run: yarn build --mac
+        run: yarn build:mac
         env:
           # electron-builder가 강제로 GitHub 릴리스를 생성하는 것을 방지
           CI: false
