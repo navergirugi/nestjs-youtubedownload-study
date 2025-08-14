@@ -1,34 +1,20 @@
 {
+  // 이 파일은 VS Code 같은 에디터가 프로젝트 전체 구조를 이해하도록 돕는 "안내용" 설정입니다.
+  // 실제 Next.js 빌드에는 `renderer/tsconfig.json` 파일이 사용됩니다.
   "compilerOptions": {
-    "target": "es5",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "forceConsistentCasingInFileNames": true,
-    "noEmit": true,
-    "esModuleInterop": true,
+    // 에디터의 타입 검사를 위한 기본 설정
+    "target": "esnext",
     "module": "esnext",
     "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    // 에디터에서 '@/' 경로 별칭을 올바르게 인식하도록 설정합니다.
     "baseUrl": ".",
     "paths": {
       "@/*": ["renderer/*"]
     }
   },
-  "include": [
-    "renderer/next-env.d.ts",
-    "renderer/**/*.ts",
-    "renderer/**/*.tsx",
-    "renderer/.next/types/**/*.ts"
-  ],
-  "exclude": ["node_modules", "electron", "app"]
+  // 이 설정 파일이 적용될 범위를 지정합니다. (빌드에는 영향을 주지 않음)
+  "include": ["electron/**/*.ts", "renderer/**/*.ts", "renderer/**/*.tsx"]
 }
