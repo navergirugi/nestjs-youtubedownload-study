@@ -6,8 +6,6 @@
 // shell: 파일 시스템의 파일을 관리하는 데 사용되는 유틸리티 (예: 폴더에서 파일 보기)
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
-import { fileURLToPath } from 'node:url';
-import { createRequire } from 'node:module';
 // 현재 환경이 개발 환경인지 프로덕션(배포) 환경인지 쉽게 확인하게 해주는 유틸리티입니다.
 import isDev from 'electron-is-dev';
 // ESM 모듈인 electron-store와 yt-dlp-wrap을 직접 가져옵니다.
@@ -53,28 +51,16 @@ if (!gotTheLock) {
   }
   writeLog('=== App Starting ===');
 
-  // --- CJS 모듈(yt-dlp-wrap) 호환성 처리 ---
-  // `yt-dlp-wrap`은 구형 CommonJS(CJS) 모듈이므로, 최신 ESM 프로젝트에서 사용하려면 특별한 처리가 필요합니다.
+  // --- CommonJS 환경 설정 ---
+  // 프로젝트가 안정적인 CommonJS 모듈 시스템으로 컴파일되므로,
+  // `import.meta.url` 같은 ESM 전용 기능 대신 `require`와 `__dirname`을 직접 사용합니다.
 
-  // 1. 타입(Type) 가져오기: `import()` 타입을 사용하여 모듈의 타입 정보를 가져옵니다.
-  // `typeof import(...)`는 클래스 생성자(constructor)의 타입을 가져옵니다.
-  // 최신 ESM이 구형 CJS 모듈을 불러올 때, 모듈의 `exports`는 `.default` 프로퍼티 안에 담깁니다.
-  // 따라서 `import('yt-dlp-wrap')`의 타입에서 `.default`를 꺼내야 진짜 클래스 생성자의 타입을 얻을 수 있습니다.
-  type YtDlpWrapConstructor = (typeof import('yt-dlp-wrap'))['default'];
-  // `InstanceType<...>` 유틸리티를 사용하여, 생성자로부터 인스턴스의 타입을 추론합니다.
-  type YtDlpWrapInstance = InstanceType<YtDlpWrapConstructor>;
+  // yt-dlp-wrap은 CommonJS 모듈이므로, require를 사용하여 직접 가져옵니다.
+  const YtDlpWrap = require('yt-dlp-wrap');
 
-  // ESM 프로젝트에서 CJS 모듈(yt-dlp-wrap)을 안정적으로 불러오기 위해 require를 생성합니다.
-  const require = createRequire(import.meta.url);
-  // 2. 값(Value) 가져오기: `require`를 사용하여 실제 클래스 생성자(값)를 불러온 뒤, 위에서 정의한 타입으로 지정해줍니다.
-  const YtDlpWrapModule = require('yt-dlp-wrap');
-  // CJS 모듈을 ESM에서 불러올 때, `module.exports`가 `.default` 프로퍼티로 래핑되는 경우가 있습니다.
-  // 런타임 시점에 `.default`가 있는지 확인하고, 없으면 모듈 자체를 사용합니다.
-  const YtDlpWrap = (YtDlpWrapModule.default || YtDlpWrapModule) as YtDlpWrapConstructor;
-
-  // ESM 환경에서는 __dirname, __filename 변수가 없으므로, import.meta.url을 사용하여 직접 정의합니다.
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
+  // 타입 추론을 위해 YtDlpWrap의 인스턴스 타입을 정의합니다.
+  // 이렇게 하면 ytDlpWrap 변수에서 자동완성 기능을 계속 사용할 수 있습니다.
+  type YtDlpWrapInstance = InstanceType<typeof YtDlpWrap>;
 
   writeLog(`__dirname: ${__dirname}`);
   writeLog(`isDev: ${isDev}`);
