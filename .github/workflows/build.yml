@@ -85,9 +85,20 @@ jobs:
           timeout_seconds: 600
           command: yarn install --frozen-lockfile
 
-      # 4단계: macOS용 애플리케이션을 빌드합니다. (package.json의 "build:mac" 스크립트 실행)
-      - name: Build macOS App
-        run: yarn build:mac
+      # 4단계: 애플리케이션 소스 코드를 빌드합니다. (TypeScript 컴파일 및 Next.js 빌드)
+      - name: Build Application Source
+        run: yarn build
+
+      # 5단계: 빌드 결과물을 확인하여 아이콘 파일 존재 여부를 검사합니다. (디버깅용)
+      - name: Verify Build Output
+        run: |
+          echo "--- Listing contents of dist directory ---"
+          ls -R dist
+          echo "----------------------------------------"
+
+      # 6단계: macOS용 애플리케이션을 패키징합니다.
+      - name: Package macOS App
+        run: electron-builder --mac
         env:
           # electron-builder가 강제로 GitHub 릴리스를 생성하는 것을 방지
           CI: false
@@ -100,8 +111,8 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      # 5단계: 빌드 결과물(설치 파일)을 '아티팩트(Artifact)'로 업로드하여 다운로드할 수 있게 만듭니다.
-      - name: Upload macOS Installer
+      # 7단계: 빌드 결과물(설치 파일)을 '아티팩트(Artifact)'로 업로드하여 다운로드할 수 있게 만듭니다.
+      - name: Upload macOS App
         uses: actions/upload-artifact@v4
         with:
           # 다운로드 받을 때 표시될 아티팩트의 이름입니다.
