@@ -90,8 +90,15 @@ jobs:
         run: yarn build:mac
         env:
           # electron-builder가 강제로 GitHub 릴리스를 생성하는 것을 방지
-          ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: true
           CI: false
+          # === Apple Code Signing & Notarization ===
+          # 아래 값들은 GitHub Repository의 'Settings > Secrets and variables > Actions'에 등록해야 합니다.
+          # 이 설정이 있어야 "손상된 앱" 오류가 발생하지 않습니다.
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       # 5단계: 빌드 결과물(설치 파일)을 '아티팩트(Artifact)'로 업로드하여 다운로드할 수 있게 만듭니다.
       - name: Upload macOS Installer
