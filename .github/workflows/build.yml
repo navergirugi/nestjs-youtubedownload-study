@@ -98,20 +98,47 @@ jobs:
 
       # 6단계: macOS용 애플리케이션을 패키징합니다.
       - name: Package macOS App
-        run: yarn electron-builder --mac
+#        run: yarn electron-builder --mac
+        run: yarn build --mac
         env:
           # electron-builder가 강제로 GitHub 릴리스를 생성하는 것을 방지
           CI: false
+          # Apple 개발자 계정이 없는 경우 코드 사이닝 비활성화
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          # 빈 패스워드로 설정하여 코드 사이닝 오류 방지
+          CSC_KEY_PASSWORD: ""
+
           # === Apple Code Signing & Notarization ===
           # 아래 값들은 GitHub Repository의 'Settings > Secrets and variables > Actions'에 등록해야 합니다.
           # 이 설정이 있어야 "손상된 앱" 오류가 발생하지 않습니다.
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+#          CSC_LINK: ${{ secrets.CSC_LINK }}
+#          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+#          APPLE_ID: ${{ secrets.APPLE_ID }}
+#          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+#          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      # 7단계: 빌드 결과물(설치 파일)을 '아티팩트(Artifact)'로 업로드하여 다운로드할 수 있게 만듭니다.
+      # 7단계: 서명되지 않은 앱을 위한 xattr 처리 스크립트 생성
+      - name: Create xattr removal script
+        run: |
+          cat > remove_quarantine.sh << 'EOF'
+          #!/bin/bash
+          echo "=== SM YouTube Downloader 설치 후 실행 가이드 ==="
+          echo "이 앱은 서명되지 않았으므로 다음 명령어를 터미널에서 실행해주세요:"
+          echo ""
+          echo "1. 다운로드한 .dmg 파일을 마운트하고 앱을 Applications 폴더로 복사한 후"
+          echo "2. 터미널을 열고 다음 명령어를 입력하세요:"
+          echo ""
+          echo "   xattr -cr \"/Applications/SM YouTube Downloader.app\""
+          echo ""
+          echo "3. 그 후에 앱을 실행하면 정상적으로 작동합니다."
+          echo ""
+          echo "이 스크립트를 실행하면 자동으로 처리됩니다:"
+          echo "xattr -cr \"/Applications/SM YouTube Downloader.app\""
+          xattr -cr "/Applications/SM YouTube Downloader.app" 2>/dev/null || echo "앱이 아직 Applications 폴더에 설치되지 않았습니다."
+          EOF
+          chmod +x remove_quarantine.sh
+
+      # 8단계: 빌드 결과물(설치 파일)을 '아티팩트(Artifact)'로 업로드하여 다운로드할 수 있게 만듭니다.
       - name: Upload macOS App
         uses: actions/upload-artifact@v4
         with:
@@ -119,3 +146,4 @@ jobs:
           name: macos-installer
           # 업로드할 파일의 경로입니다. 'release' 폴더 안에 있는 모든 .dmg 파일을 대상으로 합니다.
           path: release/*.dmg
+                remove_quarantine.sh

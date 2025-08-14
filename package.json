@@ -51,7 +51,7 @@
     "wait-on": "^7.0.1"
   },
   "build": {
-    "appId": "com.smith",
+    "appId": "com.smith.youtube-downloader",
     "productName": "SM YouTube Downloader",
     "publish": null,
     "asarUnpack": [
@@ -63,6 +63,12 @@
     "directories": {
       "output": "release"
     },
+    "files": [
+      "dist/**/*",
+      "electron-starter.cjs",
+      "node_modules/**/*",
+      "!node_modules/**/{README.md,readme.md,CHANGELOG.md,LICENSE,license,*.d.ts}"
+    ],
     "win": {
       "target": "nsis",
       "icon": "dist/renderer/favicon.ico"
@@ -75,8 +81,41 @@
       "include": "build/installer.nsh"
     },
     "mac": {
-      "target": "dmg",
-      "icon": "dist/renderer/sm-youtube.icns"
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.utilities",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "entitlements": null,
+      "entitlementsInherit": null
+    },
+    "dmg": {
+      "title": "SM YouTube Downloader ${version}",
+      "background": null,
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 410,
+          "y": 230,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 130,
+          "y": 230,
+          "type": "file"
+        }
+      ]
     }
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
