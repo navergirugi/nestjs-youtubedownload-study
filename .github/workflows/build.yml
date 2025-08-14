@@ -32,8 +32,11 @@ jobs:
           cache: 'yarn'
 
       # 3단계: package.json에 명시된 모든 의존성을 설치합니다.
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
+      - name: Install dependencies (with retry)
+        uses: nick-invision/retry@v2
+        with:
+          max_attempts: 3
+          command: yarn install --frozen-lockfile
 
       # 4단계: Windows용 애플리케이션을 빌드합니다. (package.json의 "build:win" 스크립트 실행)
       - name: Build Windows App
@@ -68,8 +71,11 @@ jobs:
           cache: 'yarn'
 
       # 3단계: package.json에 명시된 모든 의존성을 설치합니다.
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
+      - name: Install dependencies (with retry)
+        uses: nick-invision/retry@v2
+        with:
+          max_attempts: 3
+          command: yarn install --frozen-lockfile
 
       # 4단계: macOS용 애플리케이션을 빌드합니다. (package.json의 "build:mac" 스크립트 실행)
       - name: Build macOS App

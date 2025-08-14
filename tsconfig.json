@@ -19,6 +19,6 @@
       "@/*": ["./renderer/*"]
     }
   },
-  "include": ["next-env.d.ts", "renderer/**/*.ts", "renderer/**/*.tsx"],
+  "include": ["renderer/next-env.d.ts", "renderer/**/*.ts", "renderer/**/*.tsx"],
   "exclude": ["node_modules", "electron", "app"]
 }
