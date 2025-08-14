@@ -9,7 +9,7 @@
     "dev:next": "next dev renderer",
     "dev:electron": "wait-on http://localhost:3000 && yarn build:electron && electron .",
     "build": "yarn build:electron && yarn build:next",
-    "build:next": "next build renderer ",
+    "build:next": "cd renderer && next build",
     "build:electron": "tsc -p ./electron/tsconfig.json && tsc -p ./electron/tsconfig.preload.json",
     "build:win": "yarn build && electron-builder --win",
     "build:mac": "yarn build && electron-builder --mac",
