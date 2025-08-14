@@ -36,6 +36,8 @@ jobs:
         uses: nick-invision/retry@v2
         with:
           max_attempts: 3
+          # 재시도 작업을 위한 전체 시간 제한을 10분(600초)으로 설정합니다. (필수 항목)
+          timeout_seconds: 600
           command: yarn install --frozen-lockfile
 
       # 4단계: Windows용 애플리케이션을 빌드합니다. (package.json의 "build:win" 스크립트 실행)
@@ -75,6 +77,8 @@ jobs:
         uses: nick-invision/retry@v2
         with:
           max_attempts: 3
+          # 재시도 작업을 위한 전체 시간 제한을 10분(600초)으로 설정합니다. (필수 항목)
+          timeout_seconds: 600
           command: yarn install --frozen-lockfile
 
       # 4단계: macOS용 애플리케이션을 빌드합니다. (package.json의 "build:mac" 스크립트 실행)
