@@ -30,7 +30,7 @@ const DownloadItem = ({
     return parseFloat((bytesNum / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
   };
 
-  // 현재 다운로드 진행 상태를 나타내는 boolean 값들을 계산합니다.
+  // 현재 다운로드 진행 상태를 나타내는 boolean 값들을 계삵합니다.
   const isDownloading = progress !== undefined && progress > 0 && progress < 100;
   const isCompleted = progress === 100 && !!filePath; // filePath가 있어야만 진짜 완료된 것으로 간주
 
@@ -214,7 +214,11 @@ export default function Home() {
         const errorCleanup = window.api.onDownloadError((_, { itag, error }) => {
           console.log(`Download error: ${itag} - ${error}`);
           setDownloadErrors((prev) => ({ ...prev, [itag]: error }));
-          setDownloadProgress((prev) => ({ ...prev, [itag]: undefined }));
+          setDownloadProgress((prev) => {
+            const newProgress = { ...prev };
+            delete newProgress[itag];
+            return newProgress;
+          });
         });
         cleanupFunctions.push(errorCleanup);
       }
