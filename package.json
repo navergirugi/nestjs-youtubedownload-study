@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "main": "electron-starter.cjs",
+  "description": "YouTube 비디오를 MP4/MP3로 다운로드하는 일렉트론 앱",
+  "author": {
+    "name": "Smith",
+    "email": "navergirugi@gmail.com"
+  },
   "scripts": {
     "dev": "concurrently \"yarn:dev:next\" \"yarn:dev:electron\" --kill-others",
     "dev:next": "next dev renderer",

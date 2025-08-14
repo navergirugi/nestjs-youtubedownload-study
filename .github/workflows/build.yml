@@ -43,6 +43,9 @@ jobs:
       # 4단계: Windows용 애플리케이션을 빌드합니다. (package.json의 "build:win" 스크립트 실행)
       - name: Build Windows App
         run: yarn build:win
+        env:
+          # electron-builder가 강제로 GitHub 릴리스를 생성하는 것을 방지
+          GH_TOKEN: ""
 
       # 5단계: 빌드 결과물(설치 파일)을 '아티팩트(Artifact)'로 업로드하여 다운로드할 수 있게 만듭니다.
       - name: Upload Windows Installer
@@ -84,6 +87,9 @@ jobs:
       # 4단계: macOS용 애플리케이션을 빌드합니다. (package.json의 "build:mac" 스크립트 실행)
       - name: Build macOS App
         run: yarn build:mac
+        env:
+          # electron-builder가 강제로 GitHub 릴리스를 생성하는 것을 방지
+          GH_TOKEN: ""
 
       # 5단계: 빌드 결과물(설치 파일)을 '아티팩트(Artifact)'로 업로드하여 다운로드할 수 있게 만듭니다.
       - name: Upload macOS Installer
