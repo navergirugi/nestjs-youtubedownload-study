@@ -5,7 +5,7 @@ name: Build Application
 on:
   # 1. main 브랜치에 코드가 푸시(push)될 때마다 자동으로 실행됩니다.
   push:
-    branches: [ "main" ]
+    branches: [ "winsdows-installer-check" ]
   # 2. GitHub의 'Actions' 탭에서 수동으로 이 워크플로우를 시작할 수 있게 합니다. (테스트에 매우 유용!)
   workflow_dispatch:
 

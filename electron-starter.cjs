@@ -4,6 +4,7 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { pathToFileURL } = require('url'); // [핵심] 파일 경로를 ESM이 이해할 수 있는 URL로 변환하기 위해 추가
 
 // ==================[ 시동 과정 블랙박스 ]==================
 // 이 로그는 앱의 메인 코드가 실행되기도 전에 기록되므로, 시동 실패의 원인을 찾는 데 결정적입니다.
@@ -43,7 +44,10 @@ app.whenReady().then(() => {
 
   writeStarterLog(`--- [3/4] isPackaged: ${isPackaged}, 메인 모듈 로드 시도: ${mainPath} ---`);
 
-  import(mainPath).catch((err) => {
+  // [핵심] 일반 파일 경로(예: C:\...)를 ESM의 import()가 이해할 수 있는 file:// URL로 변환합니다.
+  const mainUrl = pathToFileURL(mainPath).href;
+
+  import(mainUrl).catch((err) => {
     const errorMessage = `치명적 오류: 메인 모듈 로드 실패!\n\n오류: ${err.stack || err}`;
     writeStarterLog(`--- [4/4] 메인 모듈 로드 실패: ${errorMessage} ---`);
     dialog.showErrorBox('Fatal Startup Error', `${errorMessage}\n\n로그 파일: ${starterLogPath}`);
