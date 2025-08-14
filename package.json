@@ -53,6 +53,7 @@
   "build": {
     "appId": "com.smith",
     "productName": "SM YouTube Downloader",
+    "publish": null,
     "files": [
       "dist/**/*",
       "package.json",
