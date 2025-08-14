@@ -14,9 +14,9 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
-    "baseUrl": ".",
+    "baseUrl": "renderer",
     "paths": {
-      "@/*": ["./renderer/*"]
+      "@/*": ["./*"]
     }
   },
   "include": ["renderer/next-env.d.ts", "renderer/**/*.ts", "renderer/**/*.tsx"],
