@@ -54,20 +54,26 @@
     "appId": "com.smith.youtube-downloader",
     "productName": "SM YouTube Downloader",
     "publish": null,
+
     "asarUnpack": [
-      "dist/electron/**/*",
+      "dist/**/*",
       "**/node_modules/yt-dlp-wrap/**/*",
       "**/node_modules/electron-store/**/*",
       "**/node_modules/electron-is-dev/**/*"
     ],
+
+    "asar": true,
+
     "directories": {
       "output": "release"
     },
+
     "files": [
       "dist/**/*",
       "electron-starter.cjs",
       "node_modules/**/*",
-      "!node_modules/**/{README.md,readme.md,CHANGELOG.md,LICENSE,license,*.d.ts}"
+      "!node_modules/**/{README.md,readme.md,CHANGELOG.md,LICENSE,license,*.d.ts}",
+      "!**/.DS_Store"
     ],
     "win": {
       "target": "nsis",

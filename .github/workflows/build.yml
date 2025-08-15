@@ -85,21 +85,31 @@ jobs:
           timeout_seconds: 600
           command: yarn install --frozen-lockfile
 
-      # 4단계: 애플리케이션 소스 코드를 빌드합니다. (TypeScript 컴파일 및 Next.js 빌드)
-      - name: Build Application Source
-        run: yarn build
+      # ✅ 4빌드 과정 개선: 단계별로 실행하여 문제 파악 용이
+      - name: Build Electron Main Process
+        run: yarn build:electron
+
+      - name: Build Next.js Renderer
+        run: yarn build:next
 
       # 5단계: 빌드 결과물을 확인하여 아이콘 파일 존재 여부를 검사합니다. (디버깅용)
       - name: Verify Build Output
         run: |
-          echo "--- Listing contents of dist directory ---"
-          ls -R dist
-          echo "----------------------------------------"
+          echo "--- 프로젝트 루트 디렉토리 구조 ---"
+          ls -la
+          echo "--- dist 디렉토리 구조 ---"
+          ls -R dist || echo "dist 폴더가 없습니다"
+          echo "--- electron-starter.cjs 존재 확인 ---"
+          ls -la electron-starter.cjs || echo "electron-starter.cjs가 없습니다"
+          echo "--- main.js 파일 확인 ---"
+          ls -la dist/electron/main.js || echo "main.js가 없습니다"
 
       # 6단계: macOS용 애플리케이션을 패키징합니다.
       - name: Package macOS App
 #        run: yarn electron-builder --mac
-        run: yarn build:mac
+        run: |
+          # 임시로 asar를 비활성화하여 패키징 테스트
+          npx electron-builder --mac --config.asar=false
         env:
           # electron-builder가 강제로 GitHub 릴리스를 생성하는 것을 방지
           CI: false
