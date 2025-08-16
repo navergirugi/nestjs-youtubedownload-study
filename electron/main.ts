@@ -184,17 +184,50 @@ if (!gotTheLock) {
     } else {
       // 빌드된 앱에서는 `app.asar` 아카이브 내부에 있는 `index.html`을 로드해야 합니다.
       // `app.getAppPath()`는 `app.asar` 파일의 경로를 반환하므로, 이를 기준으로 경로를 구성합니다.
-      const htmlPath = path.join(app.getAppPath(), 'dist/renderer/index.html');
-      writeLog(`Production mode: loading HTML from ${htmlPath}`);
-      writeLog(`HTML file exists: ${fs.existsSync(htmlPath)}`);
-      win.loadFile(htmlPath).catch((error) => {
-        writeLog(`Failed to load file: ${error.message}`);
-        // 로드 실패 시 사용자에게 알림
+      // const htmlPath = path.join(app.getAppPath(), 'dist/renderer/index.html');
+      // writeLog(`Production mode: loading HTML from ${htmlPath}`);
+      // writeLog(`HTML file exists: ${fs.existsSync(htmlPath)}`);
+      // win.loadFile(htmlPath).catch((error) => {
+      //   writeLog(`Failed to load file: ${error.message}`);
+      //   // 로드 실패 시 사용자에게 알림
+      //   dialog.showErrorBox(
+      //     '페이지 로드 실패',
+      //     `앱 화면을 불러오는 데 실패했습니다.\n오류: ${error.message}`,
+      //   );
+      // });
+      const packedHtml = path.join(app.getAppPath(), 'dist', 'renderer', 'index.html');
+      const unpackedHtml = path.join(
+        process.resourcesPath,
+        'app.asar',
+        'dist',
+        'renderer',
+        'index.html',
+      );
+
+      const htmlPath = fs.existsSync(unpackedHtml)
+        ? unpackedHtml
+        : fs.existsSync(packedHtml)
+          ? packedHtml
+          : null;
+      if (!htmlPath) {
+        writeLog('Renderer index.html을 찾지 못했습니다. (packed/unpacked 모두 없음)');
         dialog.showErrorBox(
           '페이지 로드 실패',
-          `앱 화면을 불러오는 데 실패했습니다.\n오류: ${error.message}`,
+          '빌드 산출물(dist/renderer/index.html)을 찾지 못했습니다.\n패키징 설정 또는 빌드 출력을 확인해주세요.',
         );
-      });
+        app.quit();
+      } else {
+        writeLog(`Loading HTML from: ${htmlPath}`);
+        writeLog(`HTML file exists: ${fs.existsSync(htmlPath)}`);
+
+        win.loadFile(htmlPath).catch((error) => {
+          writeLog(`Failed to load file: ${error.message}`);
+          dialog.showErrorBox(
+            '페이지 로드 실패',
+            `앱 화면을 불러오는 데 실패했습니다.\n오류: ${error.message}`,
+          );
+        });
+      }
       // [디버깅] 빌드된 앱에서도 개발자 도구를 강제로 열어, 렌더러 프로세스의 오류를 확인합니다.
       // win.webContents.openDevTools({ mode: 'detach' });
     }
