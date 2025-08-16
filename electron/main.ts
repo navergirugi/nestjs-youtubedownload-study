@@ -17,6 +17,7 @@ import { YTDlpFormat, YTDlpMetadata } from './yt-dlp-types.js';
 // Node.js의 내장 모듈로, 파일 시스템과 상호작용(파일 읽기, 쓰기 등)하는 기능을 제공합니다.
 import * as fs from 'fs';
 import * as cp from 'child_process';
+import pkg from 'yt-dlp-wrap';
 
 // --- Single Instance Lock ---
 // 앱의 여러 인스턴스가 동시에 실행되는 것을 방지합니다.
@@ -63,7 +64,8 @@ if (!gotTheLock) {
 
   // ESM 프로젝트에서 CJS 모듈(yt-dlp-wrap)을 안정적으로 불러오기 위해 require를 생성합니다.
   const require = createRequire(import.meta.url);
-  const YtDlpWrap = require('yt-dlp-wrap');
+  // const YtDlpWrap = require('yt-dlp-wrap');
+  const YtDlpWrap = pkg.default || pkg;
   type YtDlpWrapInstance = InstanceType<typeof YtDlpWrap>;
 
   writeLog(`__dirname: ${__dirname}`);
