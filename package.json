@@ -56,10 +56,8 @@
     "publish": null,
 
     "asarUnpack": [
-      "dist/**/*",
-      "**/node_modules/yt-dlp-wrap/**/*",
-      "**/node_modules/electron-store/**/*",
-      "**/node_modules/electron-is-dev/**/*"
+      "/*.node",
+      "/node_modules/yt-dlp-wrap/"
     ],
 
     "asar": true,
@@ -73,7 +71,7 @@
       "electron-starter.cjs",
       "node_modules/**/*",
       "!node_modules/**/{README.md,readme.md,CHANGELOG.md,LICENSE,license,*.d.ts}",
-      "!**/.DS_Store"
+      "!/.DS_Store"
     ],
     "win": {
       "target": "nsis",
