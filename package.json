@@ -68,6 +68,7 @@
 
     "files": [
       "dist/**/*",
+      "electron/**/*",
       "electron-starter.cjs",
       "node_modules/**/*",
       "!node_modules/**/{README.md,readme.md,CHANGELOG.md,LICENSE,license,*.d.ts}",
